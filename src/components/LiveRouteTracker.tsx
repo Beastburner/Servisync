@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, useMap, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMap, Popup, Polyline } from 'react-leaflet';
 import { Icon } from 'leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-routing-machine';
+import 'leaflet-routing-machine/dist/leaflet-routing-machine.css';
 import { Navigation, Phone, Clock, Car, ArrowLeft, CheckCircle, Shield } from 'lucide-react';
 import { subscribeToProviderLocation, generateArrivalOTP, subscribeToBooking } from '../lib/supabase';
 
@@ -52,9 +53,10 @@ const RoutingMachine: React.FC<{
   providerLocation: [number, number];
   userLocation: [number, number];
   setRouteInfo: (info: { distance: string; duration: string; traffic: string }) => void;
+  setRouteCoordinates: (coords: [number, number][] | null) => void;
   bookingId: string | null;
   onArrival: () => void;
-}> = ({ providerLocation, userLocation, setRouteInfo, bookingId, onArrival }) => {
+}> = ({ providerLocation, userLocation, setRouteInfo, setRouteCoordinates, bookingId, onArrival }) => {
   const map = useMap();
   const routingControlRef = useRef<L.Routing.Control | null>(null);
 
@@ -66,23 +68,70 @@ const RoutingMachine: React.FC<{
         map.removeControl(routingControlRef.current);
       }
 
+      console.log('🗺️ Creating route between:', {
+        provider: [providerLocation[0], providerLocation[1]],
+        user: [userLocation[0], userLocation[1]]
+      });
+
       const control = L.Routing.control({
         waypoints: [
           L.latLng(providerLocation[0], providerLocation[1]),
           L.latLng(userLocation[0], userLocation[1]),
         ],
         lineOptions: {
-          styles: [{ color: '#4F46E5', weight: 5, opacity: 0.8 }],
+          styles: [{ 
+            color: '#2563EB', // Bright blue color for route line
+            weight: 8, // Thicker line for better visibility
+            opacity: 0.95, // More opaque for better visibility
+            dashArray: null // Solid line (not dashed)
+          }],
         },
-        show: false,
+        show: false, // Hide the routing instructions panel
         addWaypoints: false,
         draggableWaypoints: false,
-        fitSelectedRoutes: true,
+        fitSelectedRoutes: true, // Auto-fit map to show entire route
         routeWhileDragging: false,
-        createMarker: () => null, // 🚫 prevent default markers
+        createMarker: () => null // 🚫 prevent default markers (we use custom markers)
       })
         .on('routesfound', (e: any) => {
+          console.log('✅ Route found!', e);
           const route = e.routes[0];
+          if (!route) {
+            console.error('❌ No route in routes array');
+            return;
+          }
+          
+          console.log('📍 Route details:', {
+            distance: route.summary.totalDistance,
+            time: route.summary.totalTime,
+            coordinates: route.coordinates?.length || 0
+          });
+          
+          // Store route coordinates for Polyline fallback
+          if (route.coordinates && route.coordinates.length > 0) {
+            const coords = route.coordinates.map((coord: any) => [coord.lat, coord.lng] as [number, number]);
+            setRouteCoordinates(coords);
+            console.log('✅ Route coordinates stored:', coords.length, 'points');
+          } else if (route.legs && route.legs.length > 0) {
+            // Alternative: extract coordinates from route legs
+            const coords: [number, number][] = [];
+            route.legs.forEach((leg: any) => {
+              if (leg.steps) {
+                leg.steps.forEach((step: any) => {
+                  if (step.geometry && step.geometry.coordinates) {
+                    step.geometry.coordinates.forEach((coord: any) => {
+                      coords.push([coord[1], coord[0]]); // GeoJSON format: [lng, lat] -> [lat, lng]
+                    });
+                  }
+                });
+              }
+            });
+            if (coords.length > 0) {
+              setRouteCoordinates(coords);
+              console.log('✅ Route coordinates extracted from legs:', coords.length, 'points');
+            }
+          }
+          
           const distanceKm = (route.summary.totalDistance / 1000).toFixed(1);
           const durationMin = Math.round(route.summary.totalTime / 60);
           setRouteInfo({
@@ -95,6 +144,19 @@ const RoutingMachine: React.FC<{
                 ? 'Light traffic'
                 : 'Moderate traffic',
           });
+          
+          // Ensure route line is visible
+          setTimeout(() => {
+            const routeLines = document.querySelectorAll('.leaflet-routing-container .leaflet-routing-geocoders, .leaflet-routing-container path');
+            console.log('🔍 Route lines found:', routeLines.length);
+            routeLines.forEach((line: any) => {
+              if (line.style) {
+                line.style.stroke = '#2563EB';
+                line.style.strokeWidth = '8px';
+                line.style.opacity = '0.95';
+              }
+            });
+          }, 500);
           
           // Check if provider has arrived at doorstep (distance is 0.0km or very close - 10 meters)
           // Using 0.01 km (10 meters) as threshold for doorstep arrival
@@ -152,15 +214,36 @@ const RoutingMachine: React.FC<{
       Array.from(panels).forEach((p: any) => (p.style.display = 'none'));
 
       routingControlRef.current = control;
+      
+      // Ensure route line is visible - check after route is rendered
+      setTimeout(() => {
+        // Find all SVG paths in the map (route lines)
+        const mapContainer = map.getContainer();
+        const svgPaths = mapContainer.querySelectorAll('svg path');
+        svgPaths.forEach((path: any) => {
+          const stroke = path.getAttribute('stroke') || path.style.stroke;
+          // If it's a route line (has stroke), make sure it's blue and visible
+          if (stroke || path.getAttribute('fill') === 'none') {
+            path.setAttribute('stroke', '#2563EB');
+            path.setAttribute('stroke-width', '8');
+            path.setAttribute('stroke-opacity', '0.95');
+            path.setAttribute('fill', 'none');
+            path.style.stroke = '#2563EB';
+            path.style.strokeWidth = '8px';
+            path.style.opacity = '0.95';
+            console.log('✅ Route line styled and made visible');
+          }
+        });
+      }, 1500);
     };
 
     // Initial route
     createRouting();
 
-    // Refresh route every 10 seconds
+    // Refresh route every 30 seconds (reduced frequency to prevent too fast updates)
     const interval = setInterval(() => {
       createRouting();
-    }, 10000);
+    }, 30000);
 
     return () => {
       clearInterval(interval);
@@ -188,6 +271,7 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
     duration: '—',
     traffic: 'Fetching...',
   });
+  const [routeCoordinates, setRouteCoordinates] = useState<[number, number][] | null>(null);
   const [isGettingLocation, setIsGettingLocation] = useState(true);
   const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null);
   const [trackingAllowed, setTrackingAllowed] = useState<{ allowed: boolean; reason?: string }>({ allowed: false });
@@ -429,12 +513,29 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
 
     console.log('Subscribing to provider location updates for:', providerId);
 
+    // Debounce location updates to prevent too frequent updates
+    let lastUpdateTimestamp = 0;
+    const MIN_UPDATE_INTERVAL = 5000; // Minimum 5 seconds between updates
+
     // Subscribe to real-time provider location
     const unsubscribe = subscribeToProviderLocation(providerId, (location) => {
       if (location && location.latitude != null && location.longitude != null) {
-        setProviderLocation([location.latitude, location.longitude]);
-        setLastUpdateTime(location.updatedAt || new Date());
-        console.log('Provider location updated:', location);
+        const now = Date.now();
+        
+        // Only update if enough time has passed since last update
+        if (now - lastUpdateTimestamp >= MIN_UPDATE_INTERVAL) {
+          setProviderLocation([location.latitude, location.longitude]);
+          const updateTime = location.updatedAt ? new Date(location.updatedAt) : new Date();
+          setLastUpdateTime(updateTime);
+          lastUpdateTimestamp = now;
+          console.log('Provider location updated:', {
+            lat: location.latitude,
+            lng: location.longitude,
+            updatedAt: updateTime.toISOString()
+          });
+        } else {
+          console.log('Location update skipped (too frequent):', now - lastUpdateTimestamp, 'ms ago');
+        }
       } else {
         console.warn('Provider location is null or invalid');
         setProviderLocation(null);
@@ -517,8 +618,8 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
     // Check immediately
     checkDistance();
     
-    // Check every 5 seconds
-    const interval = setInterval(checkDistance, 5000);
+    // Check every 10 seconds (reduced frequency to prevent too fast updates)
+    const interval = setInterval(checkDistance, 10000);
 
     return () => {
       clearInterval(interval);
@@ -646,12 +747,26 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
               </Marker>
             )}
 
+            {/* Route Line - Fallback Polyline if routing service fails */}
+            {providerLocation && userLocation && (
+              <Polyline
+                positions={(routeCoordinates && routeCoordinates.length > 0) ? routeCoordinates : [providerLocation, userLocation]}
+                pathOptions={{
+                  color: '#2563EB',
+                  weight: 8,
+                  opacity: 0.95,
+                  dashArray: (routeCoordinates && routeCoordinates.length > 0) ? undefined : '10, 10' // Dashed if direct line, solid if route
+                }}
+              />
+            )}
+
             {/* Routing */}
             {providerLocation && (
               <RoutingMachine
                 providerLocation={providerLocation}
                 userLocation={userLocation}
                 setRouteInfo={setRouteInfo}
+                setRouteCoordinates={setRouteCoordinates}
                 bookingId={bookingId}
                 onArrival={async () => {
                   if (!otpGeneratedRef.current && bookingId) {
