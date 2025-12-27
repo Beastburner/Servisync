@@ -44,6 +44,7 @@ function App() {
   const [userRole, setUserRole] = useState<'customer' | 'provider' | null>(null);
   const [showUserDashboard, setShowUserDashboard] = useState(false);
   const [showProviderDashboard, setShowProviderDashboard] = useState(false);
+  const [providerDashboardTab, setProviderDashboardTab] = useState<string>('overview');
   const [showServiceManagement, setShowServiceManagement] = useState(false);
   const [activeService, setActiveService] = useState(0);
   const [selectedLocation, setSelectedLocation] = useState<LocationData | null>(null);
@@ -216,14 +217,57 @@ function App() {
               {/* Provider Navigation */}
               <nav className="hidden md:flex space-x-8">
                 <button
-                  onClick={() => setShowProviderDashboard(true)}
-                  className="text-gray-700 hover:text-purple-600 transition-colors font-medium"
+                  onClick={() => {
+                    setProviderDashboardTab('overview');
+                    setShowProviderDashboard(true);
+                  }}
+                  className={`transition-colors font-medium ${
+                    showProviderDashboard && providerDashboardTab === 'overview'
+                      ? 'text-purple-600'
+                      : 'text-gray-700 hover:text-purple-600'
+                  }`}
                 >
                   Dashboard
                 </button>
-                <a href="#bookings" className="text-gray-700 hover:text-purple-600 transition-colors">My Bookings</a>
-                <a href="#earnings" className="text-gray-700 hover:text-purple-600 transition-colors">Earnings</a>
-                <a href="#profile" className="text-gray-700 hover:text-purple-600 transition-colors">Profile</a>
+                <button
+                  onClick={() => {
+                    setProviderDashboardTab('jobs');
+                    setShowProviderDashboard(true);
+                  }}
+                  className={`transition-colors ${
+                    showProviderDashboard && providerDashboardTab === 'jobs'
+                      ? 'text-purple-600'
+                      : 'text-gray-700 hover:text-purple-600'
+                  }`}
+                >
+                  My Bookings
+                </button>
+                <button
+                  onClick={() => {
+                    setProviderDashboardTab('earnings');
+                    setShowProviderDashboard(true);
+                  }}
+                  className={`transition-colors ${
+                    showProviderDashboard && providerDashboardTab === 'earnings'
+                      ? 'text-purple-600'
+                      : 'text-gray-700 hover:text-purple-600'
+                  }`}
+                >
+                  Earnings
+                </button>
+                <button
+                  onClick={() => {
+                    setProviderDashboardTab('profile');
+                    setShowProviderDashboard(true);
+                  }}
+                  className={`transition-colors ${
+                    showProviderDashboard && providerDashboardTab === 'profile'
+                      ? 'text-purple-600'
+                      : 'text-gray-700 hover:text-purple-600'
+                  }`}
+                >
+                  Profile
+                </button>
               </nav>
 
               <div className="hidden md:flex items-center space-x-4">
@@ -257,14 +301,45 @@ function App() {
             <div className="md:hidden bg-white border-t">
               <div className="px-2 pt-2 pb-3 space-y-1">
                 <button
-                  onClick={() => setShowProviderDashboard(true)}
+                  onClick={() => {
+                    setProviderDashboardTab('overview');
+                    setShowProviderDashboard(true);
+                    setIsMenuOpen(false);
+                  }}
                   className="block px-3 py-2 text-gray-700 hover:text-purple-600 font-medium"
                 >
                   Dashboard
                 </button>
-                <a href="#bookings" className="block px-3 py-2 text-gray-700 hover:text-purple-600">My Bookings</a>
-                <a href="#earnings" className="block px-3 py-2 text-gray-700 hover:text-purple-600">Earnings</a>
-                <a href="#profile" className="block px-3 py-2 text-gray-700 hover:text-purple-600">Profile</a>
+                <button
+                  onClick={() => {
+                    setProviderDashboardTab('jobs');
+                    setShowProviderDashboard(true);
+                    setIsMenuOpen(false);
+                  }}
+                  className="block px-3 py-2 text-gray-700 hover:text-purple-600"
+                >
+                  My Bookings
+                </button>
+                <button
+                  onClick={() => {
+                    setProviderDashboardTab('earnings');
+                    setShowProviderDashboard(true);
+                    setIsMenuOpen(false);
+                  }}
+                  className="block px-3 py-2 text-gray-700 hover:text-purple-600"
+                >
+                  Earnings
+                </button>
+                <button
+                  onClick={() => {
+                    setProviderDashboardTab('profile');
+                    setShowProviderDashboard(true);
+                    setIsMenuOpen(false);
+                  }}
+                  className="block px-3 py-2 text-gray-700 hover:text-purple-600"
+                >
+                  Profile
+                </button>
                 <div className="px-3 py-2 border-t">
                   <button
                     onClick={handleSignOut}
@@ -366,8 +441,14 @@ function App() {
                   {providerProfile?.is_active ? 'Set Unavailable' : 'Set Available'}
                 </button>
                 <button 
-                  onClick={() => setShowServiceManagement(true)}
-                  className="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-200 transition-colors"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('Manage Services button clicked');
+                    setShowServiceManagement(true);
+                  }}
+                  className="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-200 transition-colors cursor-pointer relative z-10"
+                  type="button"
                 >
                   Manage Services
                 </button>
@@ -407,6 +488,22 @@ function App() {
           <ProviderDashboard
             userId={user.uid}
             onClose={() => setShowProviderDashboard(false)}
+            initialTab={providerDashboardTab}
+            onManageServices={() => {
+              setShowProviderDashboard(false);
+              setShowServiceManagement(true);
+            }}
+          />
+        )}
+
+        {/* Service Management Modal */}
+        {showServiceManagement && user && userRole === 'provider' && (
+          <ServiceManagementModal
+            userId={user.uid}
+            onClose={() => {
+              setShowServiceManagement(false);
+              fetchProviderData(); // Refresh provider data after closing
+            }}
           />
         )}
       </div>
@@ -1079,17 +1176,6 @@ function App() {
         <UserDashboard
           userId={user.uid}
           onClose={() => setShowUserDashboard(false)}
-        />
-      )}
-
-      {/* Service Management Modal */}
-      {showServiceManagement && user && userRole === 'provider' && (
-        <ServiceManagementModal
-          userId={user.uid}
-          onClose={() => {
-            setShowServiceManagement(false);
-            fetchProviderData(); // Refresh provider data after closing
-          }}
         />
       )}
     </div>

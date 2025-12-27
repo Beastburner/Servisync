@@ -23,13 +23,20 @@ import { LiveRouteTracker } from './LiveRouteTracker';
 interface ProviderDashboardProps {
   userId: string;
   onClose: () => void;
+  initialTab?: string;
+  onManageServices?: () => void;
 }
 
-const ProviderDashboard: React.FC<ProviderDashboardProps> = ({ userId, onClose }) => {
-  const [activeTab, setActiveTab] = useState('overview');
+const ProviderDashboard: React.FC<ProviderDashboardProps> = ({ userId, onClose, initialTab = 'overview', onManageServices }) => {
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [bookings, setBookings] = useState<any[]>([]);
   const [providerData, setProviderData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Update activeTab when initialTab prop changes
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
   const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
   const [showManualLocation, setShowManualLocation] = useState(false);
   const [manualLocation, setManualLocation] = useState({ lat: '', lng: '' });
@@ -40,36 +47,53 @@ const ProviderDashboard: React.FC<ProviderDashboardProps> = ({ userId, onClose }
   const [otpInput, setOtpInput] = useState('');
   const [isVerifyingOTP, setIsVerifyingOTP] = useState(false);
 
-  const stats = [
-    {
-      title: 'Total Earnings',
-      value: '₹15,420',
-      change: '+12%',
-      icon: DollarSign,
-      color: 'text-green-600'
-    },
-    {
-      title: 'Completed Jobs',
-      value: '43',
-      change: '+5',
-      icon: CheckCircle,
-      color: 'text-blue-600'
-    },
-    {
-      title: 'Average Rating',
-      value: '4.8',
-      change: '+0.2',
-      icon: Star,
-      color: 'text-yellow-600'
-    },
-    {
-      title: 'Response Time',
-      value: '12 min',
-      change: '-3 min',
-      icon: Clock,
-      color: 'text-purple-600'
-    }
-  ];
+  // Calculate real stats from bookings and provider data
+  const calculateStats = () => {
+    const completedBookings = bookings.filter((b: any) => b.status === 'completed');
+    const totalEarnings = completedBookings.reduce((sum: number, booking: any) => {
+      return sum + (parseFloat(booking.total_amount) || parseFloat(booking.price) || 0);
+    }, 0);
+    
+    const completedJobsCount = completedBookings.length;
+    const averageRating = providerData?.rating || 0;
+    const totalReviews = providerData?.total_reviews || 0;
+    
+    // Calculate pending bookings count
+    const pendingBookings = bookings.filter((b: any) => ['pending', 'accepted', 'scheduled'].includes(b.status));
+    
+    return [
+      {
+        title: 'Total Earnings',
+        value: `₹${totalEarnings.toLocaleString('en-IN')}`,
+        change: completedJobsCount > 0 ? `${completedJobsCount} jobs` : 'No earnings yet',
+        icon: DollarSign,
+        color: 'text-green-600'
+      },
+      {
+        title: 'Completed Jobs',
+        value: completedJobsCount.toString(),
+        change: pendingBookings.length > 0 ? `${pendingBookings.length} pending` : 'No pending jobs',
+        icon: CheckCircle,
+        color: 'text-blue-600'
+      },
+      {
+        title: 'Average Rating',
+        value: averageRating > 0 ? averageRating.toFixed(1) : '0.0',
+        change: totalReviews > 0 ? `${totalReviews} reviews` : 'No reviews yet',
+        icon: Star,
+        color: 'text-yellow-600'
+      },
+      {
+        title: 'Total Bookings',
+        value: bookings.length.toString(),
+        change: bookings.length > 0 ? 'All time' : 'No bookings yet',
+        icon: Clock,
+        color: 'text-purple-600'
+      }
+    ];
+  };
+
+  const stats = calculateStats();
 
   useEffect(() => {
     fetchProviderData();
@@ -268,6 +292,33 @@ const ProviderDashboard: React.FC<ProviderDashboardProps> = ({ userId, onClose }
 
   const renderOverview = () => (
     <div className="space-y-6">
+      {/* Quick Actions */}
+      {onManageServices && (
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <button
+              onClick={onManageServices}
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2 font-medium"
+            >
+              <span>Manage Services & Prices</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('jobs')}
+              className="bg-gray-100 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center space-x-2 font-medium"
+            >
+              <span>View All Bookings</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('profile')}
+              className="bg-gray-100 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center space-x-2 font-medium"
+            >
+              <span>Edit Profile</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat, index) => {
           const IconComponent = stat.icon;

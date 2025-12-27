@@ -347,7 +347,7 @@ export const addProviderService = async (userId: string, service: { name: string
       name: service.name,
       price: service.price,
       description: service.description || '',
-      created_at: serverTimestamp(),
+      created_at: new Date().toISOString(), // Use ISO string instead of serverTimestamp() for array elements
     };
     
     services.push(newService);
@@ -384,7 +384,7 @@ export const updateProviderService = async (userId: string, serviceId: string, u
     services[serviceIndex] = {
       ...services[serviceIndex],
       ...updates,
-      updated_at: serverTimestamp(),
+      updated_at: new Date().toISOString(), // Use ISO string instead of serverTimestamp() for array elements
     };
     
     await updateDoc(docRef, {
