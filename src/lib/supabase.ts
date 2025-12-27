@@ -1055,6 +1055,8 @@ export const subscribeToProviderLocation = (
 
   const providerRef = doc(db, 'service_providers', providerId);
   
+  let lastLocation: { latitude: number; longitude: number } | null = null;
+  
   return onSnapshot(
     providerRef,
     (docSnapshot) => {
@@ -1070,7 +1072,18 @@ export const subscribeToProviderLocation = (
         // Only call callback if location is valid
         if (location.latitude != null && location.longitude != null && 
             !isNaN(location.latitude) && !isNaN(location.longitude)) {
-          callback(location);
+          // Check if location has actually changed (avoid duplicate callbacks)
+          if (!lastLocation || 
+              lastLocation.latitude !== location.latitude || 
+              lastLocation.longitude !== location.longitude) {
+            console.log(`📍 Location change detected for provider ${providerId}:`, {
+              old: lastLocation,
+              new: { latitude: location.latitude, longitude: location.longitude },
+              updatedAt: location.updatedAt
+            });
+            lastLocation = { latitude: location.latitude, longitude: location.longitude };
+            callback(location);
+          }
         } else {
           console.warn(`Provider ${providerId} has invalid location data`);
           callback(null);

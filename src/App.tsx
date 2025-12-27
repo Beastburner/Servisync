@@ -6,6 +6,7 @@ import { AuthModal } from './components/AuthModal';
 import { UserDashboard } from './components/UserDashboard';
 import { ProviderDashboard } from './components/ProviderDashboard';
 import ServiceManagementModal from './components/ServiceManagementModal';
+import { ProviderLocationTracker } from './components/ProviderLocationTracker';
 import { getCurrentUser, getUserProfile, getServiceProvider, signOut, updateServiceProvider, getProviderServices, addProviderService, updateProviderService, deleteProviderService } from './lib/supabase';
 import { 
   Search, 
@@ -482,6 +483,15 @@ function App() {
             </div>
           </div>
         </main>
+
+        {/* Location Tracker - Updates provider location when logged in */}
+        {user && userRole === 'provider' && (
+          <ProviderLocationTracker 
+            userId={user.uid} 
+            isActive={true}
+            updateInterval={2 * 60 * 1000} // Update every 2 minutes for faster updates
+          />
+        )}
 
         {/* Provider Dashboard Modal */}
         {showProviderDashboard && (

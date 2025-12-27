@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { Icon } from 'leaflet';
 import { MapPin, Star, Phone, Navigation, Clock } from 'lucide-react';
 import { BookingModal } from './BookingModal';
-import { getNearbyServiceProviders, createBooking } from '../lib/supabase';
+import { getNearbyServiceProviders, createBooking, subscribeToProviderLocation } from '../lib/supabase';
 import 'leaflet/dist/leaflet.css';
 
 // Fix for default markers in React Leaflet
@@ -183,6 +183,151 @@ export const ServiceAreaMap: React.FC<ServiceAreaMapProps> = ({ location, select
     fetchProviders();
   }, [location.lat, location.lng, selectedService]);
 
+  // Subscribe to real-time location updates for all visible providers
+  useEffect(() => {
+    if (providers.length === 0) return;
+
+    const unsubscribes: (() => void)[] = [];
+    const providerIds = providers.map(p => p.user_id || p.id).filter(Boolean);
+
+    console.log('📍 Setting up real-time location subscriptions for providers:', providerIds);
+
+    // Subscribe to location updates for each provider
+    providerIds.forEach((providerId) => {
+      if (providerId) {
+        const unsubscribe = subscribeToProviderLocation(providerId, (newLocation) => {
+          if (newLocation && newLocation.latitude != null && newLocation.longitude != null) {
+            console.log(`🔄 Real-time location update for provider ${providerId}:`, {
+              lat: newLocation.latitude,
+              lng: newLocation.longitude,
+              updatedAt: newLocation.updatedAt
+            });
+            
+            // Update the provider's coordinates and recalculate distance
+            setProviders((prevProviders) => {
+              return prevProviders.map((p) => {
+                const pId = p.user_id || p.id;
+                if (pId === providerId) {
+                  // Recalculate distance with new coordinates
+                  const R = 6371; // Earth's radius in kilometers
+                  const dLat = (newLocation.latitude - location.lat) * Math.PI / 180;
+                  const dLon = (newLocation.longitude - location.lng) * Math.PI / 180;
+                  const a = 
+                    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos(location.lat * Math.PI / 180) * Math.cos(newLocation.latitude * Math.PI / 180) *
+                    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                  const distanceKm = R * c;
+                  
+                  const distanceStr = distanceKm < 1 
+                    ? `${Math.round(distanceKm * 1000)}m` 
+                    : `${distanceKm.toFixed(1)} km`;
+                  
+                  const etaMinutes = Math.round(distanceKm * 10 + 5);
+                  const etaStr = `${etaMinutes} min`;
+
+                  console.log(`✅ Updated provider ${providerId} location on map:`, {
+                    old: { lat: p.coordinates.lat, lng: p.coordinates.lng },
+                    new: { lat: newLocation.latitude, lng: newLocation.longitude },
+                    distance: distanceStr
+                  });
+
+                  return {
+                    ...p,
+                    coordinates: {
+                      lat: newLocation.latitude,
+                      lng: newLocation.longitude
+                    },
+                    distance: distanceStr,
+                    eta: etaStr
+                  };
+                }
+                return p;
+              });
+            });
+          } else {
+            console.warn(`⚠️ Invalid location update for provider ${providerId}:`, newLocation);
+          }
+        });
+        unsubscribes.push(unsubscribe);
+      }
+    });
+
+    // Also set up periodic refetch to ensure we have the latest data (every 30 seconds)
+    const refetchInterval = setInterval(async () => {
+      try {
+        const { data: providersData, error } = await getNearbyServiceProviders(
+          location.lat,
+          location.lng,
+          10,
+          selectedService === 'all' ? undefined : selectedService
+        );
+
+        if (!error && providersData) {
+          const transformedProviders: ServiceProvider[] = providersData.map((provider: any) => {
+            const distanceKm = provider.distance_km || 0;
+            const distanceStr = distanceKm < 1 
+              ? `${Math.round(distanceKm * 1000)}m` 
+              : `${distanceKm.toFixed(1)} km`;
+            const etaMinutes = Math.round(distanceKm * 10 + 5);
+            const etaStr = `${etaMinutes} min`;
+
+            let price = '₹299';
+            if (provider.services && Array.isArray(provider.services) && provider.services.length > 0) {
+              const matchingService = provider.services.find((s: any) => 
+                s.name.toLowerCase().includes(selectedService.toLowerCase()) || 
+                selectedService === 'all'
+              );
+              if (matchingService && matchingService.price) {
+                price = `₹${matchingService.price}`;
+              } else if (provider.services[0] && provider.services[0].price) {
+                price = `₹${provider.services[0].price}`;
+              }
+            } else if (provider.price) {
+              price = typeof provider.price === 'string' ? provider.price : `₹${provider.price}`;
+            } else {
+              const defaultPrices: { [key: string]: string } = {
+                'cleaning': '₹299', 'repair': '₹319', 'beauty': '₹279', 'fitness': '₹349',
+                'electrical': '₹399', 'plumbing': '₹379', 'painting': '₹449', 'appliance': '₹329'
+              };
+              price = defaultPrices[provider.service_type] || '₹299';
+            }
+
+            const providerId = provider.user_id || provider.id;
+            return {
+              id: providerId,
+              user_id: provider.user_id || providerId,
+              name: provider.business_name || 'Service Provider',
+              rating: provider.rating || 0,
+              distance: distanceStr,
+              eta: etaStr,
+              price: price,
+              service: provider.service_type || 'Service',
+              phone: provider.phone || '',
+              coordinates: {
+                lat: provider.latitude,
+                lng: provider.longitude
+              },
+              image: provider.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1'
+            };
+          });
+
+          setProviders(transformedProviders);
+          console.log('🔄 Periodic refetch completed, updated providers list');
+        }
+      } catch (error) {
+        console.error('Error in periodic refetch:', error);
+      }
+    }, 30000); // Refetch every 30 seconds
+
+    // Cleanup subscriptions and interval
+    return () => {
+      console.log('🧹 Cleaning up location subscriptions');
+      unsubscribes.forEach((unsubscribe) => unsubscribe());
+      clearInterval(refetchInterval);
+    };
+  }, [providers.map(p => p.user_id || p.id).join(','), location.lat, location.lng, selectedService]);
+
   const handleProviderSelect = (provider: ServiceProvider) => {
     setSelectedProvider(provider);
   };
@@ -316,7 +461,7 @@ export const ServiceAreaMap: React.FC<ServiceAreaMapProps> = ({ location, select
             ) : (
               providers.map((provider) => (
                 <Marker
-                  key={provider.id}
+                  key={`${provider.user_id || provider.id}-${provider.coordinates.lat.toFixed(6)}-${provider.coordinates.lng.toFixed(6)}`}
                   position={[provider.coordinates.lat, provider.coordinates.lng]}
                   icon={providerIcon}
                   eventHandlers={{

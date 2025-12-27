@@ -33,21 +33,55 @@ export const ProviderLocationTracker: React.FC<ProviderLocationTrackerProps> = (
       return;
     }
 
-    // Initial location update
+    // Initial location update - force immediate update
     const updateLocation = async () => {
       try {
-        const { error } = await updateProviderLocationFromGeolocation(userId);
-        if (error) {
-          console.error('Error updating provider location:', error);
+        // Force fresh location by setting maximumAge to 0
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            async (position) => {
+              const { latitude, longitude } = position.coords;
+              try {
+                const { updateServiceProviderLocation } = await import('../lib/supabase');
+                const { error } = await updateServiceProviderLocation(userId, latitude, longitude);
+                if (error) {
+                  console.error('Error updating provider location:', error);
+                } else {
+                  console.log('Provider location updated immediately:', { latitude, longitude });
+                }
+              } catch (error) {
+                console.error('Error updating location:', error);
+              }
+            },
+            async (error) => {
+              console.error('Geolocation error, trying fallback:', error);
+              // Fallback to updateProviderLocationFromGeolocation
+              const { updateProviderLocationFromGeolocation } = await import('../lib/supabase');
+              const { error: fallbackError } = await updateProviderLocationFromGeolocation(userId);
+              if (fallbackError) {
+                console.error('Error updating provider location (fallback):', fallbackError);
+              }
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 10000,
+              maximumAge: 0 // Force fresh location
+            }
+          );
         } else {
-          console.log('Provider location updated successfully');
+          // Fallback if geolocation not available
+          const { updateProviderLocationFromGeolocation } = await import('../lib/supabase');
+          const { error } = await updateProviderLocationFromGeolocation(userId);
+          if (error) {
+            console.error('Error updating provider location:', error);
+          }
         }
       } catch (error) {
         console.error('Error in updateLocation:', error);
       }
     };
 
-    // Update location immediately
+    // Update location immediately when component mounts or becomes active
     updateLocation();
 
     // Set up periodic updates
