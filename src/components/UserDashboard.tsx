@@ -196,7 +196,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userId, onClose }) => {
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center space-x-4">
                         <img 
-                          src="https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1"
+                          src={booking.service_providers?.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1'}
                           alt={booking.service_providers?.business_name || 'Provider'}
                           className="w-16 h-16 rounded-full object-cover"
                         />
@@ -248,41 +248,156 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userId, onClose }) => {
                             ❌ This booking was rejected by the provider
                           </div>
                         )}
-                        {['accepted', 'scheduled', 'in-progress'].includes(booking.status) && (
+                        {['accepted', 'scheduled', 'in-progress'].includes(booking.status) && (() => {
+                          // Check if user can view map (30 minutes before scheduled time)
+                          const canViewMap = () => {
+                            // If service is in-progress, allow viewing immediately
+                            if (booking.status === 'in-progress') {
+                              return { allowed: true };
+                            }
+
+                            const bookingDate = booking.booking_date || booking.date;
+                            const bookingTime = booking.booking_time || booking.time;
+                            
+                            if (!bookingDate || !bookingTime) {
+                              return { allowed: true, reason: 'No scheduled time found' };
+                            }
+
+                            // Parse booking date and time
+                            let scheduledDateTime: Date | null = null;
+                            try {
+                              const dateParts = bookingDate.includes('-') ? bookingDate.split('-') : [];
+                              let year, month, day;
+                              
+                              if (dateParts.length === 3) {
+                                if (dateParts[0].length === 4) {
+                                  year = parseInt(dateParts[0]);
+                                  month = parseInt(dateParts[1]) - 1;
+                                  day = parseInt(dateParts[2]);
+                                } else {
+                                  day = parseInt(dateParts[0]);
+                                  month = parseInt(dateParts[1]) - 1;
+                                  year = parseInt(dateParts[2]);
+                                }
+                              } else {
+                                return { allowed: true, reason: 'Invalid date format' };
+                              }
+
+                              const timeParts = bookingTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+                              if (timeParts) {
+                                let hours = parseInt(timeParts[1]);
+                                const minutes = parseInt(timeParts[2]);
+                                const period = timeParts[3]?.toUpperCase();
+
+                                if (period === 'PM' && hours !== 12) {
+                                  hours += 12;
+                                } else if (period === 'AM' && hours === 12) {
+                                  hours = 0;
+                                }
+
+                                scheduledDateTime = new Date(year, month, day, hours, minutes);
+                              } else {
+                                return { allowed: true, reason: 'Invalid time format' };
+                              }
+                            } catch (error) {
+                              return { allowed: true, reason: 'Could not parse scheduled time' };
+                            }
+
+                            if (!scheduledDateTime) {
+                              return { allowed: true, reason: 'Invalid scheduled time format' };
+                            }
+
+                            // Check if it's within 30 minutes of scheduled time
+                            const now = new Date();
+                            const timeDiff = scheduledDateTime.getTime() - now.getTime();
+                            const minutesUntilScheduled = timeDiff / (1000 * 60);
+
+                            if (minutesUntilScheduled > 30) {
+                              const hoursUntil = Math.floor(minutesUntilScheduled / 60);
+                              const minsUntil = Math.floor(minutesUntilScheduled % 60);
+                              let timeStr = '';
+                              if (hoursUntil > 0) {
+                                timeStr = `${hoursUntil} hour${hoursUntil > 1 ? 's' : ''} ${minsUntil > 0 ? `${minsUntil} min${minsUntil > 1 ? 's' : ''}` : ''}`;
+                              } else {
+                                timeStr = `${minsUntil} minute${minsUntil > 1 ? 's' : ''}`;
+                              }
+                              
+                              return { 
+                                allowed: false, 
+                                reason: `Map viewing will be available 30 minutes before your scheduled time (${bookingDate} at ${bookingTime}). Currently ${timeStr} away.` 
+                              };
+                            }
+
+                            return { allowed: true };
+                          };
+
+                          const mapCheck = canViewMap();
+                          return (
+                            <button 
+                              onClick={() => {
+                                const mapCheck = canViewMap();
+                                if (!mapCheck.allowed) {
+                                  alert(mapCheck.reason || 'Map viewing is not available at this time.');
+                                  return;
+                                }
+                                setSelectedBooking({
+                                  ...booking,
+                                  provider_id: booking.provider_id,
+                                  provider: {
+                                    id: booking.provider_id,
+                                    name: booking.service_providers?.business_name || 'Provider',
+                                    image: booking.service_providers?.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1',
+                                    phone: booking.service_providers?.phone || booking.customer_phone
+                                  },
+                                  service: booking.service_type || booking.service
+                                });
+                                setShowLiveTracking(true);
+                              }}
+                              className={`px-4 py-2 rounded-lg transition-colors font-medium flex items-center space-x-2 ${
+                                mapCheck.allowed 
+                                  ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                              }`}
+                              disabled={!mapCheck.allowed}
+                              title={mapCheck.allowed ? 'Track Service' : mapCheck.reason || 'Map viewing not available'}
+                            >
+                              <MapPin className="h-4 w-4" />
+                              <span>Track Service</span>
+                            </button>
+                          );
+                        })()}
+                        {booking.status === 'completed' && (
                           <button 
                             onClick={() => {
-                              setSelectedBooking({
-                                ...booking,
-                                provider_id: booking.provider_id,
-                                provider: {
-                                  id: booking.provider_id,
-                                  name: booking.service_providers?.business_name || 'Provider',
-                                  image: booking.service_providers?.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1',
-                                  phone: booking.service_providers?.phone || booking.customer_phone
-                                },
-                                service: booking.service_type || booking.service
-                              });
-                              setShowLiveTracking(true);
+                              alert('Rating feature coming soon!');
                             }}
-                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center space-x-2"
+                            className="text-green-600 hover:text-green-700 font-medium"
                           >
-                            <MapPin className="h-4 w-4" />
-                            <span>Track Service</span>
-                          </button>
-                        )}
-                        {booking.status === 'completed' && (
-                          <button className="text-green-600 hover:text-green-700 font-medium">
                             Rate Service
                           </button>
                         )}
                       </div>
                       <div className="flex space-x-3">
-                        <button className="text-gray-600 hover:text-gray-800 font-medium">
+                        <button 
+                          onClick={() => {
+                            alert(`Booking Details:\n\nService: ${booking.service_type}\nProvider: ${booking.service_providers?.business_name || 'N/A'}\nDate: ${booking.booking_date}\nTime: ${booking.booking_time}\nAddress: ${booking.service_address}\nStatus: ${booking.status}\nAmount: ₹${booking.total_amount}`);
+                          }}
+                          className="text-gray-600 hover:text-gray-800 font-medium"
+                        >
                           View Details
                         </button>
-                        <button className="text-red-600 hover:text-red-700 font-medium">
-                          Cancel
-                        </button>
+                        {['pending', 'accepted', 'scheduled'].includes(booking.status) && (
+                          <button 
+                            onClick={() => {
+                              if (confirm('Are you sure you want to cancel this booking?')) {
+                                alert('Cancel booking feature coming soon!');
+                              }
+                            }}
+                            className="text-red-600 hover:text-red-700 font-medium"
+                          >
+                            Cancel
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -298,7 +413,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userId, onClose }) => {
         <LiveRouteTracker
           booking={selectedBooking}
           onClose={() => setShowLiveTracking(false)}
-          apiKey=""
+          isProvider={false}
         />
       )}
     </div>

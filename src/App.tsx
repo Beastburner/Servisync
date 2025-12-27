@@ -5,7 +5,8 @@ import { ServiceAreaMap } from './components/ServiceAreaMap';
 import { AuthModal } from './components/AuthModal';
 import { UserDashboard } from './components/UserDashboard';
 import { ProviderDashboard } from './components/ProviderDashboard';
-import { getCurrentUser, getUserProfile, getServiceProvider, signOut } from './lib/supabase';
+import ServiceManagementModal from './components/ServiceManagementModal';
+import { getCurrentUser, getUserProfile, getServiceProvider, signOut, updateServiceProvider, getProviderServices, addProviderService, updateProviderService, deleteProviderService } from './lib/supabase';
 import { 
   Search, 
   Star, 
@@ -43,6 +44,7 @@ function App() {
   const [userRole, setUserRole] = useState<'customer' | 'provider' | null>(null);
   const [showUserDashboard, setShowUserDashboard] = useState(false);
   const [showProviderDashboard, setShowProviderDashboard] = useState(false);
+  const [showServiceManagement, setShowServiceManagement] = useState(false);
   const [activeService, setActiveService] = useState(0);
   const [selectedLocation, setSelectedLocation] = useState<LocationData | null>(null);
   const [showServiceArea, setShowServiceArea] = useState(false);
@@ -101,6 +103,18 @@ function App() {
       setUserProfile(null);
       setProviderProfile(null);
       setUserRole(null);
+    }
+  };
+
+  const fetchProviderData = async () => {
+    if (!user?.uid) return;
+    try {
+      const { data: providerProfileData } = await getServiceProvider(user.uid);
+      if (providerProfileData) {
+        setProviderProfile(providerProfileData);
+      }
+    } catch (error) {
+      console.error('Error fetching provider data:', error);
     }
   };
 
@@ -339,10 +353,22 @@ function App() {
                 >
                   View All Bookings
                 </button>
-                <button className="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-200 transition-colors">
-                  Update Availability
+                <button 
+                  onClick={() => {
+                    const newAvailability = !providerProfile?.is_active;
+                    updateServiceProvider(user.uid, { is_active: newAvailability }).then(() => {
+                      alert(newAvailability ? 'You are now available for bookings' : 'You are now unavailable for bookings');
+                      fetchProviderData();
+                    });
+                  }}
+                  className="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  {providerProfile?.is_active ? 'Set Unavailable' : 'Set Available'}
                 </button>
-                <button className="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-200 transition-colors">
+                <button 
+                  onClick={() => setShowServiceManagement(true)}
+                  className="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-200 transition-colors"
+                >
                   Manage Services
                 </button>
               </div>
@@ -616,7 +642,7 @@ function App() {
       )}
 
       {/* Services Section */}
-      <section id="services" className="py-12 md:py-20 bg-white">
+      <section id="services" className="py-12 md:py-20 bg-white scroll-mt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-4">
@@ -661,7 +687,7 @@ function App() {
       </section>
 
       {/* How It Works Section */}
-      <section id="how-it-works" className="py-12 md:py-20 bg-gray-50">
+      <section id="how-it-works" className="py-12 md:py-20 bg-gray-50 scroll-mt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-4">
@@ -701,6 +727,168 @@ function App() {
               <p className="text-sm sm:text-base text-gray-600 px-4">
                 Enjoy professional service at your convenience with guaranteed satisfaction.
               </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* For Professionals Section */}
+      <section id="professionals" className="py-12 md:py-20 bg-white scroll-mt-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+              For Professionals
+            </h2>
+            <p className="text-lg sm:text-xl text-gray-600">
+              Join our network of trusted service providers
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12">
+            <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl p-6 sm:p-8">
+              <div className="bg-blue-600 w-16 h-16 rounded-full flex items-center justify-center mb-6">
+                <Users className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-4">Why Join ServiSync?</h3>
+              <ul className="space-y-3 text-gray-700">
+                <li className="flex items-start">
+                  <CheckCircle className="w-5 h-5 text-green-600 mr-3 mt-0.5 flex-shrink-0" />
+                  <span>Access to thousands of customers in your area</span>
+                </li>
+                <li className="flex items-start">
+                  <CheckCircle className="w-5 h-5 text-green-600 mr-3 mt-0.5 flex-shrink-0" />
+                  <span>Flexible schedule - work when you want</span>
+                </li>
+                <li className="flex items-start">
+                  <CheckCircle className="w-5 h-5 text-green-600 mr-3 mt-0.5 flex-shrink-0" />
+                  <span>Secure and timely payments</span>
+                </li>
+                <li className="flex items-start">
+                  <CheckCircle className="w-5 h-5 text-green-600 mr-3 mt-0.5 flex-shrink-0" />
+                  <span>Build your reputation with customer reviews</span>
+                </li>
+                <li className="flex items-start">
+                  <CheckCircle className="w-5 h-5 text-green-600 mr-3 mt-0.5 flex-shrink-0" />
+                  <span>Free registration and profile setup</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-2xl p-6 sm:p-8">
+              <div className="bg-purple-600 w-16 h-16 rounded-full flex items-center justify-center mb-6">
+                <TrendingUp className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-4">How It Works</h3>
+              <div className="space-y-4">
+                <div className="flex items-start">
+                  <div className="bg-purple-600 text-white w-8 h-8 rounded-full flex items-center justify-center mr-4 flex-shrink-0 font-semibold">1</div>
+                  <div>
+                    <h4 className="font-semibold text-gray-900 mb-1">Sign Up</h4>
+                    <p className="text-gray-600 text-sm">Create your professional profile with your services and availability</p>
+                  </div>
+                </div>
+                <div className="flex items-start">
+                  <div className="bg-purple-600 text-white w-8 h-8 rounded-full flex items-center justify-center mr-4 flex-shrink-0 font-semibold">2</div>
+                  <div>
+                    <h4 className="font-semibold text-gray-900 mb-1">Get Bookings</h4>
+                    <p className="text-gray-600 text-sm">Receive booking requests from customers in your service area</p>
+                  </div>
+                </div>
+                <div className="flex items-start">
+                  <div className="bg-purple-600 text-white w-8 h-8 rounded-full flex items-center justify-center mr-4 flex-shrink-0 font-semibold">3</div>
+                  <div>
+                    <h4 className="font-semibold text-gray-900 mb-1">Provide Service</h4>
+                    <p className="text-gray-600 text-sm">Complete jobs and earn money with secure payment processing</p>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-8">
+                <button
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="w-full bg-purple-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-purple-700 transition-colors"
+                >
+                  Join as a Professional
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* About Section */}
+      <section id="about" className="py-12 md:py-20 bg-gray-50 scroll-mt-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+              About ServiSync
+            </h2>
+            <p className="text-lg sm:text-xl text-gray-600 max-w-3xl mx-auto">
+              Connecting customers with trusted professionals for all home service needs
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 mb-12">
+            <div>
+              <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-4">Our Mission</h3>
+              <p className="text-gray-700 leading-relaxed mb-4">
+                At ServiSync, we believe that finding reliable home service professionals should be simple, fast, and stress-free. Our mission is to bridge the gap between customers who need quality services and skilled professionals who can deliver them.
+              </p>
+              <p className="text-gray-700 leading-relaxed">
+                We're committed to creating a platform that benefits both customers and service providers, ensuring transparency, security, and satisfaction for everyone.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-4">What We Offer</h3>
+              <ul className="space-y-3 text-gray-700">
+                <li className="flex items-start">
+                  <CheckCircle className="w-5 h-5 text-blue-600 mr-3 mt-0.5 flex-shrink-0" />
+                  <span>Wide range of home services from cleaning to repairs</span>
+                </li>
+                <li className="flex items-start">
+                  <CheckCircle className="w-5 h-5 text-blue-600 mr-3 mt-0.5 flex-shrink-0" />
+                  <span>Verified and background-checked professionals</span>
+                </li>
+                <li className="flex items-start">
+                  <CheckCircle className="w-5 h-5 text-blue-600 mr-3 mt-0.5 flex-shrink-0" />
+                  <span>Real-time tracking of service providers</span>
+                </li>
+                <li className="flex items-start">
+                  <CheckCircle className="w-5 h-5 text-blue-600 mr-3 mt-0.5 flex-shrink-0" />
+                  <span>Secure payment processing</span>
+                </li>
+                <li className="flex items-start">
+                  <CheckCircle className="w-5 h-5 text-blue-600 mr-3 mt-0.5 flex-shrink-0" />
+                  <span>24/7 customer support</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-lg p-6 sm:p-8">
+            <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-6 text-center">Our Values</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <div className="text-center">
+                <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Shield className="w-8 h-8 text-blue-600" />
+                </div>
+                <h4 className="font-semibold text-gray-900 mb-2">Trust</h4>
+                <p className="text-sm text-gray-600">We verify all professionals to ensure safety and reliability</p>
+              </div>
+              <div className="text-center">
+                <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Star className="w-8 h-8 text-green-600" />
+                </div>
+                <h4 className="font-semibold text-gray-900 mb-2">Quality</h4>
+                <p className="text-sm text-gray-600">We maintain high standards for all services on our platform</p>
+              </div>
+              <div className="text-center">
+                <div className="bg-purple-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Users className="w-8 h-8 text-purple-600" />
+                </div>
+                <h4 className="font-semibold text-gray-900 mb-2">Community</h4>
+                <p className="text-sm text-gray-600">Building connections between customers and professionals</p>
+              </div>
             </div>
           </div>
         </div>
@@ -891,6 +1079,17 @@ function App() {
         <UserDashboard
           userId={user.uid}
           onClose={() => setShowUserDashboard(false)}
+        />
+      )}
+
+      {/* Service Management Modal */}
+      {showServiceManagement && user && userRole === 'provider' && (
+        <ServiceManagementModal
+          userId={user.uid}
+          onClose={() => {
+            setShowServiceManagement(false);
+            fetchProviderData(); // Refresh provider data after closing
+          }}
         />
       )}
     </div>

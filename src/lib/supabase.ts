@@ -306,6 +306,125 @@ export const updateServiceProvider = async (userId: string, updates: any) => {
   }
 };
 
+// Service management functions
+export const getProviderServices = async (userId: string) => {
+  try {
+    const docRef = doc(db, 'service_providers', userId);
+    const docSnap = await getDoc(docRef);
+    
+    if (!docSnap.exists()) {
+      return { data: [], error: null };
+    }
+    
+    const data = docSnap.data();
+    const services = data.services || [];
+    return { data: services, error: null };
+  } catch (error) {
+    console.error('Error getting provider services:', error);
+    return { data: [], error };
+  }
+};
+
+export const addProviderService = async (userId: string, service: { name: string; price: number; description?: string }) => {
+  try {
+    const docRef = doc(db, 'service_providers', userId);
+    const docSnap = await getDoc(docRef);
+    
+    if (!docSnap.exists()) {
+      return { data: null, error: new Error('Provider profile not found') };
+    }
+    
+    const currentData = docSnap.data();
+    const services = currentData.services || [];
+    
+    // Check if service already exists
+    if (services.some((s: any) => s.name.toLowerCase() === service.name.toLowerCase())) {
+      return { data: null, error: new Error('Service already exists') };
+    }
+    
+    const newService = {
+      id: Date.now().toString(), // Simple ID generation
+      name: service.name,
+      price: service.price,
+      description: service.description || '',
+      created_at: serverTimestamp(),
+    };
+    
+    services.push(newService);
+    
+    await updateDoc(docRef, {
+      services: services,
+      updated_at: serverTimestamp(),
+    });
+    
+    return { data: newService, error: null };
+  } catch (error) {
+    console.error('Error adding provider service:', error);
+    return { data: null, error };
+  }
+};
+
+export const updateProviderService = async (userId: string, serviceId: string, updates: { name?: string; price?: number; description?: string }) => {
+  try {
+    const docRef = doc(db, 'service_providers', userId);
+    const docSnap = await getDoc(docRef);
+    
+    if (!docSnap.exists()) {
+      return { data: null, error: new Error('Provider profile not found') };
+    }
+    
+    const currentData = docSnap.data();
+    const services = currentData.services || [];
+    
+    const serviceIndex = services.findIndex((s: any) => s.id === serviceId);
+    if (serviceIndex === -1) {
+      return { data: null, error: new Error('Service not found') };
+    }
+    
+    services[serviceIndex] = {
+      ...services[serviceIndex],
+      ...updates,
+      updated_at: serverTimestamp(),
+    };
+    
+    await updateDoc(docRef, {
+      services: services,
+      updated_at: serverTimestamp(),
+    });
+    
+    return { data: services[serviceIndex], error: null };
+  } catch (error) {
+    console.error('Error updating provider service:', error);
+    return { data: null, error };
+  }
+};
+
+export const deleteProviderService = async (userId: string, serviceId: string) => {
+  try {
+    const docRef = doc(db, 'service_providers', userId);
+    const docSnap = await getDoc(docRef);
+    
+    if (!docSnap.exists()) {
+      return { error: new Error('Provider profile not found') };
+    }
+    
+    const currentData = docSnap.data();
+    const services = currentData.services || [];
+    
+    const filteredServices = services.filter((s: any) => s.id !== serviceId);
+    
+    await updateDoc(docRef, {
+      services: filteredServices,
+      updated_at: serverTimestamp(),
+    });
+    
+    return { error: null };
+  } catch (error) {
+    console.error('Error deleting provider service:', error);
+    return { error };
+  }
+};
+
 // Booking functions
 export const createBooking = async (bookingData: any) => {
   try {

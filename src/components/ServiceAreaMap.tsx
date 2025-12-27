@@ -107,18 +107,40 @@ export const ServiceAreaMap: React.FC<ServiceAreaMapProps> = ({ location, select
           const etaMinutes = Math.round(distanceKm * 10 + 5);
           const etaStr = `${etaMinutes} min`;
 
-          // Default price based on service type
-          const defaultPrices: { [key: string]: string } = {
-            'cleaning': '₹299',
-            'repair': '₹319',
-            'beauty': '₹279',
-            'fitness': '₹349',
-            'electrical': '₹399',
-            'plumbing': '₹379',
-            'painting': '₹449',
-            'appliance': '₹329'
-          };
-          const price = provider.price || defaultPrices[provider.service_type] || '₹299';
+          // Get price from provider's services array if available, otherwise use default
+          let price = '₹299'; // Default fallback
+          
+          // Check if provider has a services array with prices
+          if (provider.services && Array.isArray(provider.services) && provider.services.length > 0) {
+            // Find service matching the selected service type
+            const matchingService = provider.services.find((s: any) => 
+              s.name.toLowerCase().includes(selectedService.toLowerCase()) || 
+              selectedService === 'all'
+            );
+            
+            if (matchingService && matchingService.price) {
+              price = `₹${matchingService.price}`;
+            } else if (provider.services[0] && provider.services[0].price) {
+              // Use first service price if no match found
+              price = `₹${provider.services[0].price}`;
+            }
+          } else if (provider.price) {
+            // Fallback to provider.price field if services array doesn't exist
+            price = typeof provider.price === 'string' ? provider.price : `₹${provider.price}`;
+          } else {
+            // Default price based on service type
+            const defaultPrices: { [key: string]: string } = {
+              'cleaning': '₹299',
+              'repair': '₹319',
+              'beauty': '₹279',
+              'fitness': '₹349',
+              'electrical': '₹399',
+              'plumbing': '₹379',
+              'painting': '₹449',
+              'appliance': '₹329'
+            };
+            price = defaultPrices[provider.service_type] || '₹299';
+          }
 
           // ALWAYS use user_id (Firebase Auth UID) as the primary identifier
           // The document ID should match user_id, but user_id is the source of truth
