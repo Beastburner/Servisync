@@ -1056,6 +1056,7 @@ export const subscribeToProviderLocation = (
   const providerRef = doc(db, 'service_providers', providerId);
   
   let lastLocation: { latitude: number; longitude: number } | null = null;
+  let isFirstSnapshot = true;
   
   return onSnapshot(
     providerRef,
@@ -1072,20 +1073,31 @@ export const subscribeToProviderLocation = (
         // Only call callback if location is valid
         if (location.latitude != null && location.longitude != null && 
             !isNaN(location.latitude) && !isNaN(location.longitude)) {
-          // Check if location has actually changed (avoid duplicate callbacks)
-          if (!lastLocation || 
+          // Always call callback on first snapshot, then only on changes
+          if (isFirstSnapshot || !lastLocation || 
               lastLocation.latitude !== location.latitude || 
               lastLocation.longitude !== location.longitude) {
-            console.log(`📍 Location change detected for provider ${providerId}:`, {
-              old: lastLocation,
-              new: { latitude: location.latitude, longitude: location.longitude },
-              updatedAt: location.updatedAt
-            });
+            if (isFirstSnapshot) {
+              console.log(`📍 Initial location for provider ${providerId}:`, {
+                latitude: location.latitude,
+                longitude: location.longitude,
+                updatedAt: location.updatedAt
+              });
+              isFirstSnapshot = false;
+            } else {
+              console.log(`📍 Location change detected for provider ${providerId}:`, {
+                old: lastLocation,
+                new: { latitude: location.latitude, longitude: location.longitude },
+                updatedAt: location.updatedAt
+              });
+            }
             lastLocation = { latitude: location.latitude, longitude: location.longitude };
             callback(location);
+          } else {
+            console.log(`📍 Location unchanged for provider ${providerId} (skipping callback)`);
           }
         } else {
-          console.warn(`Provider ${providerId} has invalid location data`);
+          console.warn(`Provider ${providerId} has invalid location data:`, location);
           callback(null);
         }
       } else {

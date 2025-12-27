@@ -185,12 +185,20 @@ export const ServiceAreaMap: React.FC<ServiceAreaMapProps> = ({ location, select
 
   // Subscribe to real-time location updates for all visible providers
   useEffect(() => {
-    if (providers.length === 0) return;
+    if (providers.length === 0) {
+      console.log('📍 No providers to subscribe to');
+      return;
+    }
 
     const unsubscribes: (() => void)[] = [];
     const providerIds = providers.map(p => p.user_id || p.id).filter(Boolean);
 
     console.log('📍 Setting up real-time location subscriptions for providers:', providerIds);
+    console.log('📍 Current provider locations:', providers.map(p => ({
+      id: p.user_id || p.id,
+      lat: p.coordinates.lat,
+      lng: p.coordinates.lng
+    })));
 
     // Subscribe to location updates for each provider
     providerIds.forEach((providerId) => {
