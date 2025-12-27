@@ -3,6 +3,8 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  signInWithPopup,
+  GoogleAuthProvider,
   User
 } from 'firebase/auth';
 import {
@@ -158,6 +160,86 @@ export const signOut = async () => {
   } catch (error) {
     console.error('Error signing out:', error);
     return { error };
+  }
+};
+
+// Google Authentication
+export const signInWithGoogle = async (userType: 'customer' | 'provider' = 'customer', additionalData?: { businessName?: string; serviceType?: string; phone?: string }) => {
+  try {
+    if (!auth) {
+      throw new Error('Firebase Auth is not initialized.');
+    }
+
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({
+      prompt: 'select_account'
+    });
+
+    const result = await signInWithPopup(auth, provider);
+    const user = result.user;
+
+    if (user) {
+      // Check if user profile already exists
+      const userProfileRef = doc(db, 'user_profiles', user.uid);
+      const providerProfileRef = doc(db, 'service_providers', user.uid);
+      
+      const [userProfileSnap, providerProfileSnap] = await Promise.all([
+        getDoc(userProfileRef),
+        getDoc(providerProfileRef)
+      ]);
+
+      const isExistingCustomer = userProfileSnap.exists();
+      const isExistingProvider = providerProfileSnap.exists();
+      const userExists = isExistingCustomer || isExistingProvider;
+
+      // If user doesn't exist, create profile based on userType
+      if (!userExists) {
+        if (userType === 'customer') {
+          await createUserProfile(user.uid, {
+            full_name: user.displayName || additionalData?.phone ? 'User' : 'User',
+            phone: additionalData?.phone || '',
+          });
+        } else {
+          // For provider sign-up, require additional data
+          if (!additionalData?.businessName || !additionalData?.serviceType) {
+            throw new Error('Business name and service type are required for provider sign-up.');
+          }
+          await createServiceProvider(user.uid, {
+            business_name: additionalData.businessName || user.displayName || 'Business',
+            service_type: additionalData.serviceType || 'cleaning',
+            phone: additionalData.phone || '',
+          });
+        }
+      } else {
+        // If user exists, update phone if provided and not already set
+        if (additionalData?.phone) {
+          if (isExistingCustomer) {
+            const currentData = userProfileSnap.data();
+            if (!currentData.phone) {
+              await updateDoc(userProfileRef, { phone: additionalData.phone });
+            }
+          } else if (isExistingProvider) {
+            const currentData = providerProfileSnap.data();
+            if (!currentData.phone) {
+              await updateDoc(providerProfileRef, { phone: additionalData.phone });
+            }
+          }
+        }
+      }
+    }
+
+    return { user, error: null };
+  } catch (error: any) {
+    console.error('Error signing in with Google:', error);
+    
+    if (error.code === 'auth/popup-closed-by-user') {
+      return { 
+        user: null, 
+        error: { message: 'Sign-in popup was closed. Please try again.', code: error.code }
+      };
+    }
+    
+    return { user: null, error };
   }
 };
 
@@ -1125,6 +1207,49 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c; // Distance in kilometers
 };
 
+// Get all available services from all active providers
+export const getAllAvailableServices = async () => {
+  try {
+    if (!db) {
+      console.error('Firestore database is not initialized');
+      return { data: [], error: new Error('Database not initialized') };
+    }
+
+    const providersRef = collection(db, 'service_providers');
+    const q = query(providersRef, where('is_active', '==', true));
+    const querySnapshot = await getDocs(q);
+
+    const servicesMap = new Map<string, { name: string; service_type: string; count: number }>();
+
+    querySnapshot.docs.forEach((doc) => {
+      const providerData = doc.data();
+      const services = providerData.services || [];
+
+      services.forEach((service: any) => {
+        const serviceKey = `${service.name.toLowerCase()}_${service.service_type}`;
+        if (servicesMap.has(serviceKey)) {
+          const existing = servicesMap.get(serviceKey)!;
+          existing.count += 1;
+        } else {
+          servicesMap.set(serviceKey, {
+            name: service.name,
+            service_type: service.service_type || 'other',
+            count: 1
+          });
+        }
+      });
+    });
+
+    // Convert map to array and sort by count (most popular first)
+    const servicesArray = Array.from(servicesMap.values()).sort((a, b) => b.count - a.count);
+
+    return { data: servicesArray, error: null };
+  } catch (error) {
+    console.error('Error getting all available services:', error);
+    return { data: [], error };
+  }
+};
+
 // Get nearby service providers within a radius (in km)
 export const getNearbyServiceProviders = async (
   centerLat: number,
@@ -1150,10 +1275,10 @@ export const getNearbyServiceProviders = async (
       where('is_active', '==', true)
     );
 
-    // If service type is specified, filter by it
-    if (serviceType && serviceType !== 'all') {
-      q = query(q, where('service_type', '==', serviceType));
-    }
+    // Note: We don't filter by service_type in the query anymore because:
+    // 1. serviceType can be a specific service name (from provider.services array)
+    // 2. We'll filter by service name in the loop below
+    // 3. This allows us to show providers who offer the specific service even if their service_type is different
 
     const querySnapshot = await getDocs(q);
     const nearbyProviders: any[] = [];
@@ -1222,6 +1347,23 @@ export const getNearbyServiceProviders = async (
 
       // Only include providers within the radius
       if (distance <= radiusKm) {
+        // If serviceType is a specific service name (not a service_type), filter providers by that service
+        if (serviceType && serviceType !== 'all') {
+          const services = providerData.services || [];
+          const hasService = services.some((s: any) => 
+            s.name.toLowerCase() === serviceType.toLowerCase() || 
+            s.name.toLowerCase().includes(serviceType.toLowerCase())
+          );
+          
+          // Also check service_type as fallback
+          const matchesServiceType = providerData.service_type?.toLowerCase() === serviceType.toLowerCase();
+          
+          if (!hasService && !matchesServiceType) {
+            console.log(`❌ Provider ${providerData.business_name || providerData.id} doesn't offer service: ${serviceType}`);
+            continue;
+          }
+        }
+        
         const providerId = providerData.id || providerData.user_id;
         nearbyProviders.push({
           ...providerData,

@@ -7,7 +7,7 @@ import { UserDashboard } from './components/UserDashboard';
 import { ProviderDashboard } from './components/ProviderDashboard';
 import ServiceManagementModal from './components/ServiceManagementModal';
 import { ProviderLocationTracker } from './components/ProviderLocationTracker';
-import { getCurrentUser, getUserProfile, getServiceProvider, signOut, updateServiceProvider, getProviderServices, addProviderService, updateProviderService, deleteProviderService } from './lib/supabase';
+import { getCurrentUser, getUserProfile, getServiceProvider, signOut, updateServiceProvider, getProviderServices, addProviderService, updateProviderService, deleteProviderService, getAllAvailableServices } from './lib/supabase';
 import { 
   Search, 
   Star, 
@@ -51,13 +51,30 @@ function App() {
   const [selectedLocation, setSelectedLocation] = useState<LocationData | null>(null);
   const [showServiceArea, setShowServiceArea] = useState(false);
   const [selectedServiceType, setSelectedServiceType] = useState<string>('all');
+  const [availableServices, setAvailableServices] = useState<any[]>([]);
+  const [isLoadingServices, setIsLoadingServices] = useState(false);
   
   // API key not needed for Leaflet/OpenStreetMap
   const API_KEY = ''; // Keeping for compatibility
 
   useEffect(() => {
     checkUser();
+    fetchAvailableServices();
   }, []);
+
+  const fetchAvailableServices = async () => {
+    setIsLoadingServices(true);
+    try {
+      const { data, error } = await getAllAvailableServices();
+      if (!error && data) {
+        setAvailableServices(data);
+      }
+    } catch (error) {
+      console.error('Error fetching available services:', error);
+    } finally {
+      setIsLoadingServices(false);
+    }
+  };
 
   const checkUser = async () => {
     try {
@@ -761,34 +778,74 @@ function App() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
-            {services.map((service, index) => (
-              <div
-                key={index}
-                className="group bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer"
-                onMouseEnter={() => setActiveService(index)}
-                onClick={() => handleServiceSelect(service.searchTerm)}
-              >
-                <div className="relative h-40 sm:h-48 overflow-hidden">
-                  <img
-                    src={service.image}
-                    alt={service.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
-                  <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-2">
-                    <div className="text-blue-600">{service.icon}</div>
-                  </div>
-                </div>
-                <div className="p-4 sm:p-6">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">{service.title}</h3>
-                  <p className="text-gray-600 mb-4">{service.description}</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">Starting from ₹500</span>
-                    <ChevronRight className="w-5 h-5 text-blue-600 group-hover:translate-x-1 transition-transform" />
-                  </div>
-                </div>
+            {isLoadingServices ? (
+              <div className="col-span-full text-center py-12">
+                <div className="animate-spin w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+                <p className="text-gray-600">Loading available services...</p>
               </div>
-            ))}
+            ) : availableServices.length > 0 ? (
+              availableServices.map((service: any, index: number) => (
+                <div
+                  key={`${service.name}-${index}`}
+                  className="group bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer"
+                  onMouseEnter={() => setActiveService(index)}
+                  onClick={() => handleServiceSelect(service.name)}
+                >
+                  <div className="relative h-40 sm:h-48 overflow-hidden">
+                    <img
+                      src={getServiceImage(service.service_type)}
+                      alt={service.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
+                    <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-2">
+                      <div className="text-blue-600">{getServiceIcon(service.service_type)}</div>
+                    </div>
+                    <div className="absolute top-4 right-4 bg-blue-600 text-white px-2 py-1 rounded text-xs font-semibold">
+                      {service.count} provider{service.count !== 1 ? 's' : ''}
+                    </div>
+                  </div>
+                  <div className="p-4 sm:p-6">
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">{service.name}</h3>
+                    <p className="text-sm text-gray-500 capitalize mb-2">{service.service_type}</p>
+                    <p className="text-gray-600 mb-4">Available from {service.count} provider{service.count !== 1 ? 's' : ''}</p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-500">Click to view providers</span>
+                      <ChevronRight className="w-5 h-5 text-blue-600 group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              fallbackServices.map((service, index) => (
+                <div
+                  key={index}
+                  className="group bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer"
+                  onMouseEnter={() => setActiveService(index)}
+                  onClick={() => handleServiceSelect(service.searchTerm)}
+                >
+                  <div className="relative h-40 sm:h-48 overflow-hidden">
+                    <img
+                      src={service.image}
+                      alt={service.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
+                    <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-2">
+                      <div className="text-blue-600">{service.icon}</div>
+                    </div>
+                  </div>
+                  <div className="p-4 sm:p-6">
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">{service.title}</h3>
+                    <p className="text-gray-600 mb-4">{service.description}</p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-500">Starting from ₹500</span>
+                      <ChevronRight className="w-5 h-5 text-blue-600 group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </section>
