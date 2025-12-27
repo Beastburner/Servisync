@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useEffect } from 'react';
 import { Calendar, Clock, MapPin, Star, Phone, ArrowLeft, Filter, Search } from 'lucide-react';
-import { getUserBookings, subscribeToBookings } from '../lib/supabase';
+import { getUserBookings, subscribeToBookings, getProviderServices } from '../lib/supabase';
 import { LiveRouteTracker } from './LiveRouteTracker';
 
 interface UserDashboardProps {
@@ -16,6 +16,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userId, onClose }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [showLiveTracking, setShowLiveTracking] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
+  const [providerServicesMap, setProviderServicesMap] = useState<{ [providerId: string]: any[] }>({});
 
   useEffect(() => {
     fetchBookings();
@@ -48,6 +49,31 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userId, onClose }) => {
       } else {
         console.log(`✅ Fetched ${data?.length || 0} bookings`);
         setBookings(data || []);
+        
+        // Fetch services for each unique provider
+        const providerIds = new Set<string>();
+        (data || []).forEach((booking: any) => {
+          if (booking.provider_id) {
+            providerIds.add(booking.provider_id);
+          }
+        });
+        
+        // Fetch services for all providers
+        const servicesMap: { [providerId: string]: any[] } = {};
+        await Promise.all(
+          Array.from(providerIds).map(async (providerId) => {
+            try {
+              const { data: services, error: servicesError } = await getProviderServices(providerId);
+              if (!servicesError && services) {
+                servicesMap[providerId] = services;
+              }
+            } catch (err) {
+              console.error(`Error fetching services for provider ${providerId}:`, err);
+            }
+          })
+        );
+        
+        setProviderServicesMap(servicesMap);
       }
     } catch (error: any) {
       console.error('❌ Error fetching bookings:', error);
@@ -235,6 +261,34 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userId, onClose }) => {
                         <span>{booking.customer_phone}</span>
                       </div>
                     </div>
+
+                    {/* Provider Services Section */}
+                    {booking.provider_id && providerServicesMap[booking.provider_id] && providerServicesMap[booking.provider_id].length > 0 && (
+                      <div className="mt-4 pt-4 border-t">
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">Provider Services:</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {providerServicesMap[booking.provider_id].map((service: any) => (
+                            <div 
+                              key={service.id} 
+                              className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 flex items-center justify-between min-w-[200px]"
+                            >
+                              <div className="flex-1">
+                                <p className="text-sm font-medium text-gray-900">{service.name}</p>
+                                {service.service_type && (
+                                  <p className="text-xs text-gray-500 capitalize">{service.service_type}</p>
+                                )}
+                                {service.description && (
+                                  <p className="text-xs text-gray-600 mt-1">{service.description}</p>
+                                )}
+                              </div>
+                              <div className="ml-3">
+                                <p className="text-sm font-bold text-green-600">₹{service.price}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     <div className="flex justify-between items-center mt-4 pt-4 border-t">
                       <div className="flex space-x-3">
