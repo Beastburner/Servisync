@@ -341,57 +341,112 @@ const ProviderDashboard: React.FC<ProviderDashboardProps> = ({ userId, onClose, 
         <div className="bg-white rounded-lg shadow-md p-6">
           <h3 className="text-lg font-semibold mb-4">Upcoming Jobs</h3>
           <div className="space-y-4">
-            {bookings.slice(0, 3).map((job) => (
-              <div key={job.id} className="border border-gray-200 rounded-lg p-4">
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <h4 className="font-semibold capitalize">{job.service_type || job.service || 'Service'}</h4>
-                    <p className="text-sm text-gray-600">{job.user_profiles?.full_name || job.customer || 'Customer'}</p>
-                  </div>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(job.status || 'pending')}`}>
-                    {(job.status || 'pending').charAt(0).toUpperCase() + (job.status || 'pending').slice(1)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-sm text-gray-500">
-                  <span>{job.booking_date || job.date || 'Not set'} at {job.booking_time || job.time || 'Not set'}</span>
-                  <span className="font-semibold text-gray-900">₹{job.total_amount || job.price || '0'}</span>
-                </div>
+            {bookings.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-sm text-gray-500">No upcoming jobs</p>
+                <p className="text-xs text-gray-400 mt-2">Your scheduled bookings will appear here</p>
               </div>
-            ))}
+            ) : (
+              bookings
+                .filter((job: any) => ['pending', 'accepted', 'scheduled', 'in-progress', 'arrived'].includes(job.status))
+                .sort((a: any, b: any) => {
+                  const dateA = a.booking_date || a.date || '';
+                  const timeA = a.booking_time || a.time || '';
+                  const dateB = b.booking_date || b.date || '';
+                  const timeB = b.booking_time || b.time || '';
+                  const dateTimeA = new Date(`${dateA}T${timeA}`).getTime();
+                  const dateTimeB = new Date(`${dateB}T${timeB}`).getTime();
+                  return dateTimeA - dateTimeB;
+                })
+                .slice(0, 3)
+                .map((job) => (
+                  <div key={job.id} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h4 className="font-semibold capitalize">{job.service_type || job.service || 'Service'}</h4>
+                        <p className="text-sm text-gray-600">{job.user_profiles?.full_name || job.customer || 'Customer'}</p>
+                      </div>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(job.status || 'pending')}`}>
+                        {(job.status || 'pending').charAt(0).toUpperCase() + (job.status || 'pending').slice(1)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm text-gray-500">
+                      <span>{job.booking_date || job.date || 'Not set'} at {job.booking_time || job.time || 'Not set'}</span>
+                      <span className="font-semibold text-gray-900">₹{job.total_amount || job.price || '0'}</span>
+                    </div>
+                  </div>
+                ))
+            )}
           </div>
         </div>
 
         <div className="bg-white rounded-lg shadow-md p-6">
           <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
           <div className="space-y-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <div>
-                <p className="text-sm">Completed cleaning service</p>
-                <p className="text-xs text-gray-500">2 hours ago</p>
+            {bookings.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-sm text-gray-500">No recent activity</p>
+                <p className="text-xs text-gray-400 mt-2">Your bookings and updates will appear here</p>
               </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              <div>
-                <p className="text-sm">New booking received</p>
-                <p className="text-xs text-gray-500">4 hours ago</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-              <div>
-                <p className="text-sm">Payment processed</p>
-                <p className="text-xs text-gray-500">1 day ago</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-              <div>
-                <p className="text-sm">Received 5-star rating</p>
-                <p className="text-xs text-gray-500">2 days ago</p>
-              </div>
-            </div>
+            ) : (
+              bookings
+                .sort((a: any, b: any) => {
+                  const dateA = a.updated_at || a.created_at || '';
+                  const dateB = b.updated_at || b.created_at || '';
+                  return new Date(dateB).getTime() - new Date(dateA).getTime();
+                })
+                .slice(0, 4)
+                .map((booking: any, index: number) => {
+                  const getActivityColor = (status: string) => {
+                    if (status === 'completed') return 'bg-green-500';
+                    if (status === 'in-progress' || status === 'arrived') return 'bg-blue-500';
+                    if (status === 'accepted' || status === 'scheduled') return 'bg-yellow-500';
+                    if (status === 'pending') return 'bg-purple-500';
+                    return 'bg-gray-500';
+                  };
+
+                  const getActivityText = (booking: any) => {
+                    const serviceType = booking.service_type || booking.service || 'Service';
+                    const customerName = booking.user_profiles?.full_name || 'Customer';
+                    const status = booking.status || 'pending';
+                    
+                    if (status === 'completed') return `Completed ${serviceType} for ${customerName}`;
+                    if (status === 'in-progress') return `Started ${serviceType} for ${customerName}`;
+                    if (status === 'arrived') return `Arrived at ${customerName}'s location`;
+                    if (status === 'accepted') return `Accepted booking from ${customerName}`;
+                    if (status === 'scheduled') return `Scheduled ${serviceType} for ${customerName}`;
+                    return `New booking from ${customerName}`;
+                  };
+
+                  const getTimeAgo = (dateString: string) => {
+                    if (!dateString) return 'Recently';
+                    const date = new Date(dateString);
+                    const now = new Date();
+                    const diffMs = now.getTime() - date.getTime();
+                    const diffMins = Math.floor(diffMs / 60000);
+                    const diffHours = Math.floor(diffMs / 3600000);
+                    const diffDays = Math.floor(diffMs / 86400000);
+
+                    if (diffMins < 1) return 'Just now';
+                    if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
+                    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+                    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+                    return date.toLocaleDateString();
+                  };
+
+                  const activityDate = booking.updated_at || booking.created_at || '';
+                  
+                  return (
+                    <div key={booking.id || index} className="flex items-center space-x-3">
+                      <div className={`w-2 h-2 ${getActivityColor(booking.status || 'pending')} rounded-full`}></div>
+                      <div className="flex-1">
+                        <p className="text-sm">{getActivityText(booking)}</p>
+                        <p className="text-xs text-gray-500">{getTimeAgo(activityDate)}</p>
+                      </div>
+                    </div>
+                  );
+                })
+            )}
           </div>
         </div>
       </div>
@@ -1014,12 +1069,99 @@ const ProviderDashboard: React.FC<ProviderDashboardProps> = ({ userId, onClose, 
                 <>
                   {activeTab === 'overview' && renderOverview()}
                   {activeTab === 'jobs' && renderJobs()}
-                  {activeTab === 'earnings' && (
-                    <div className="text-center py-12">
-                      <TrendingUp className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                      <p className="text-gray-600">Earnings analytics coming soon</p>
-                    </div>
-                  )}
+                  {activeTab === 'earnings' && (() => {
+                    const completedBookings = bookings.filter((b: any) => b.status === 'completed');
+                    const totalEarnings = completedBookings.reduce((sum: number, booking: any) => {
+                      return sum + (parseFloat(booking.total_amount) || parseFloat(booking.price) || 0);
+                    }, 0);
+                    
+                    const thisMonthBookings = completedBookings.filter((b: any) => {
+                      const bookingDate = new Date(b.booking_date || b.date || b.updated_at || b.created_at);
+                      const now = new Date();
+                      return bookingDate.getMonth() === now.getMonth() && bookingDate.getFullYear() === now.getFullYear();
+                    });
+                    
+                    const thisMonthEarnings = thisMonthBookings.reduce((sum: number, booking: any) => {
+                      return sum + (parseFloat(booking.total_amount) || parseFloat(booking.price) || 0);
+                    }, 0);
+                    
+                    return (
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          <div className="bg-white rounded-lg shadow-md p-6">
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="p-3 rounded-lg bg-green-50 text-green-600">
+                                <DollarSign className="h-6 w-6" />
+                              </div>
+                            </div>
+                            <h3 className="text-2xl font-bold text-gray-900">₹{totalEarnings.toLocaleString('en-IN')}</h3>
+                            <p className="text-sm text-gray-600">Total Earnings</p>
+                            <p className="text-xs text-gray-500 mt-2">{completedBookings.length} completed jobs</p>
+                          </div>
+                          
+                          <div className="bg-white rounded-lg shadow-md p-6">
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="p-3 rounded-lg bg-blue-50 text-blue-600">
+                                <TrendingUp className="h-6 w-6" />
+                              </div>
+                            </div>
+                            <h3 className="text-2xl font-bold text-gray-900">₹{thisMonthEarnings.toLocaleString('en-IN')}</h3>
+                            <p className="text-sm text-gray-600">This Month</p>
+                            <p className="text-xs text-gray-500 mt-2">{thisMonthBookings.length} jobs this month</p>
+                          </div>
+                          
+                          <div className="bg-white rounded-lg shadow-md p-6">
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="p-3 rounded-lg bg-purple-50 text-purple-600">
+                                <CheckCircle className="h-6 w-6" />
+                              </div>
+                            </div>
+                            <h3 className="text-2xl font-bold text-gray-900">{completedBookings.length}</h3>
+                            <p className="text-sm text-gray-600">Completed Jobs</p>
+                            <p className="text-xs text-gray-500 mt-2">All time</p>
+                          </div>
+                        </div>
+                        
+                        <div className="bg-white rounded-lg shadow-md p-6">
+                          <h3 className="text-lg font-semibold mb-4">Recent Earnings</h3>
+                          <div className="space-y-4">
+                            {completedBookings.length === 0 ? (
+                              <div className="text-center py-8">
+                                <p className="text-sm text-gray-500">No completed jobs yet</p>
+                                <p className="text-xs text-gray-400 mt-2">Earnings will appear here after completing jobs</p>
+                              </div>
+                            ) : (
+                              completedBookings
+                                .sort((a: any, b: any) => {
+                                  const dateA = new Date(a.updated_at || a.created_at || a.booking_date || '');
+                                  const dateB = new Date(b.updated_at || b.created_at || b.booking_date || '');
+                                  return dateB.getTime() - dateA.getTime();
+                                })
+                                .slice(0, 10)
+                                .map((booking: any) => {
+                                  const amount = parseFloat(booking.total_amount) || parseFloat(booking.price) || 0;
+                                  const date = new Date(booking.updated_at || booking.created_at || booking.booking_date || '');
+                                  
+                                  return (
+                                    <div key={booking.id} className="flex items-center justify-between border-b border-gray-200 pb-4 last:border-0">
+                                      <div>
+                                        <p className="font-semibold text-gray-900">{booking.service_type || booking.service || 'Service'}</p>
+                                        <p className="text-sm text-gray-600">{booking.user_profiles?.full_name || 'Customer'}</p>
+                                        <p className="text-xs text-gray-500 mt-1">{date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="text-lg font-bold text-green-600">₹{amount.toLocaleString('en-IN')}</p>
+                                        <p className="text-xs text-gray-500">Completed</p>
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {activeTab === 'profile' && renderProfile()}
                 </>
               )}

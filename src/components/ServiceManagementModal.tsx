@@ -7,6 +7,7 @@ interface Service {
   name: string;
   price: number;
   description?: string;
+  service_type?: string;
 }
 
 interface ServiceManagementModalProps {
@@ -19,7 +20,19 @@ const ServiceManagementModal: React.FC<ServiceManagementModalProps> = ({ userId,
   const [isLoading, setIsLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [formData, setFormData] = useState({ name: '', price: '', description: '' });
+  const [formData, setFormData] = useState({ name: '', price: '', description: '', service_type: '' });
+  
+  const serviceTypes = [
+    { value: 'cleaning', label: 'Cleaning' },
+    { value: 'repair', label: 'Repair & Maintenance' },
+    { value: 'beauty', label: 'Beauty & Wellness' },
+    { value: 'fitness', label: 'Fitness Training' },
+    { value: 'electrical', label: 'Electrical' },
+    { value: 'plumbing', label: 'Plumbing' },
+    { value: 'painting', label: 'Painting' },
+    { value: 'appliance', label: 'Appliance Repair' },
+    { value: 'other', label: 'Other' }
+  ];
 
   useEffect(() => {
     fetchServices();
@@ -44,8 +57,8 @@ const ServiceManagementModal: React.FC<ServiceManagementModalProps> = ({ userId,
   };
 
   const handleAddService = async () => {
-    if (!formData.name.trim() || !formData.price) {
-      alert('Please fill in service name and price');
+    if (!formData.name.trim() || !formData.price || !formData.service_type) {
+      alert('Please fill in service name, price, and service type');
       return;
     }
 
@@ -60,12 +73,13 @@ const ServiceManagementModal: React.FC<ServiceManagementModalProps> = ({ userId,
         name: formData.name.trim(),
         price: price,
         description: formData.description.trim() || undefined,
+        service_type: formData.service_type,
       });
 
       if (error) {
         alert(`Error adding service: ${error.message || 'Unknown error'}`);
       } else {
-        setFormData({ name: '', price: '', description: '' });
+        setFormData({ name: '', price: '', description: '', service_type: '' });
         setShowAddForm(false);
         fetchServices();
       }
@@ -75,8 +89,8 @@ const ServiceManagementModal: React.FC<ServiceManagementModalProps> = ({ userId,
   };
 
   const handleUpdateService = async (serviceId: string) => {
-    if (!formData.name.trim() || !formData.price) {
-      alert('Please fill in service name and price');
+    if (!formData.name.trim() || !formData.price || !formData.service_type) {
+      alert('Please fill in service name, price, and service type');
       return;
     }
 
@@ -91,13 +105,14 @@ const ServiceManagementModal: React.FC<ServiceManagementModalProps> = ({ userId,
         name: formData.name.trim(),
         price: price,
         description: formData.description.trim() || undefined,
+        service_type: formData.service_type,
       });
 
       if (error) {
         alert(`Error updating service: ${error.message || 'Unknown error'}`);
       } else {
         setEditingId(null);
-        setFormData({ name: '', price: '', description: '' });
+        setFormData({ name: '', price: '', description: '', service_type: '' });
         fetchServices();
       }
     } catch (error: any) {
@@ -128,13 +143,14 @@ const ServiceManagementModal: React.FC<ServiceManagementModalProps> = ({ userId,
       name: service.name,
       price: service.price.toString(),
       description: service.description || '',
+      service_type: service.service_type || '',
     });
     setShowAddForm(false);
   };
 
   const cancelEdit = () => {
     setEditingId(null);
-    setFormData({ name: '', price: '', description: '' });
+    setFormData({ name: '', price: '', description: '', service_type: '' });
   };
 
   return (
@@ -165,7 +181,7 @@ const ServiceManagementModal: React.FC<ServiceManagementModalProps> = ({ userId,
                 <button
                   onClick={() => {
                     setShowAddForm(true);
-                    setFormData({ name: '', price: '', description: '' });
+                    setFormData({ name: '', price: '', description: '', service_type: '' });
                   }}
                   className="mb-6 w-full sm:w-auto bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2"
                 >
@@ -179,6 +195,23 @@ const ServiceManagementModal: React.FC<ServiceManagementModalProps> = ({ userId,
                 <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Add New Service</h3>
                   <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Service Type *
+                      </label>
+                      <select
+                        value={formData.service_type}
+                        onChange={(e) => setFormData({ ...formData, service_type: e.target.value })}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="">Select service type</option>
+                        {serviceTypes.map((type) => (
+                          <option key={type.value} value={type.value}>
+                            {type.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Service Name *
@@ -257,6 +290,23 @@ const ServiceManagementModal: React.FC<ServiceManagementModalProps> = ({ userId,
                         <div className="space-y-4">
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Service Type *
+                            </label>
+                            <select
+                              value={formData.service_type}
+                              onChange={(e) => setFormData({ ...formData, service_type: e.target.value })}
+                              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            >
+                              <option value="">Select service type</option>
+                              {serviceTypes.map((type) => (
+                                <option key={type.value} value={type.value}>
+                                  {type.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
                               Service Name *
                             </label>
                             <input
@@ -313,6 +363,11 @@ const ServiceManagementModal: React.FC<ServiceManagementModalProps> = ({ userId,
                             <h3 className="text-lg font-semibold text-gray-900 mb-2">
                               {service.name}
                             </h3>
+                            {service.service_type && (
+                              <p className="text-xs text-blue-600 mb-1 capitalize">
+                                {serviceTypes.find(t => t.value === service.service_type)?.label || service.service_type}
+                              </p>
+                            )}
                             {service.description && (
                               <p className="text-gray-600 mb-3">{service.description}</p>
                             )}

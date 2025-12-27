@@ -325,7 +325,7 @@ export const getProviderServices = async (userId: string) => {
   }
 };
 
-export const addProviderService = async (userId: string, service: { name: string; price: number; description?: string }) => {
+export const addProviderService = async (userId: string, service: { name: string; price: number; description?: string; service_type?: string }) => {
   try {
     const docRef = doc(db, 'service_providers', userId);
     const docSnap = await getDoc(docRef);
@@ -347,6 +347,7 @@ export const addProviderService = async (userId: string, service: { name: string
       name: service.name,
       price: service.price,
       description: service.description || '',
+      service_type: service.service_type || '',
       created_at: new Date().toISOString(), // Use ISO string instead of serverTimestamp() for array elements
     };
     
@@ -364,7 +365,7 @@ export const addProviderService = async (userId: string, service: { name: string
   }
 };
 
-export const updateProviderService = async (userId: string, serviceId: string, updates: { name?: string; price?: number; description?: string }) => {
+export const updateProviderService = async (userId: string, serviceId: string, updates: { name?: string; price?: number; description?: string; service_type?: string }) => {
   try {
     const docRef = doc(db, 'service_providers', userId);
     const docSnap = await getDoc(docRef);
