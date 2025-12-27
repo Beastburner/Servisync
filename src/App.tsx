@@ -52,6 +52,7 @@ function App() {
   const [showServiceArea, setShowServiceArea] = useState(false);
   const [selectedServiceType, setSelectedServiceType] = useState<string>('all');
   const [availableServices, setAvailableServices] = useState<any[]>([]);
+  const [availableServiceTypes, setAvailableServiceTypes] = useState<any[]>([]);
   const [isLoadingServices, setIsLoadingServices] = useState(false);
   
   // API key not needed for Leaflet/OpenStreetMap
@@ -65,9 +66,10 @@ function App() {
   const fetchAvailableServices = async () => {
     setIsLoadingServices(true);
     try {
-      const { data, error } = await getAllAvailableServices();
-      if (!error && data) {
-        setAvailableServices(data);
+      const { data, serviceTypes, error } = await getAllAvailableServices();
+      if (!error) {
+        if (data) setAvailableServices(data);
+        if (serviceTypes) setAvailableServiceTypes(serviceTypes);
       }
     } catch (error) {
       console.error('Error fetching available services:', error);
@@ -143,6 +145,53 @@ function App() {
     setUserProfile(null);
     setProviderProfile(null);
     setUserRole(null);
+  };
+
+  // Service type icons mapping
+  const getServiceIcon = (serviceType: string) => {
+    switch (serviceType?.toLowerCase()) {
+      case 'cleaning':
+        return <Zap className="w-8 h-8" />;
+      case 'repair':
+        return <Award className="w-8 h-8" />;
+      case 'beauty':
+        return <Heart className="w-8 h-8" />;
+      case 'fitness':
+        return <TrendingUp className="w-8 h-8" />;
+      case 'electrical':
+        return <Zap className="w-8 h-8" />;
+      case 'plumbing':
+        return <Award className="w-8 h-8" />;
+      case 'painting':
+        return <Heart className="w-8 h-8" />;
+      case 'appliance':
+        return <Award className="w-8 h-8" />;
+      default:
+        return <Zap className="w-8 h-8" />;
+    }
+  };
+
+  const getServiceImage = (serviceType: string) => {
+    switch (serviceType?.toLowerCase()) {
+      case 'cleaning':
+        return "https://images.pexels.com/photos/4099230/pexels-photo-4099230.jpeg?auto=compress&cs=tinysrgb&w=400";
+      case 'repair':
+        return "https://images.pexels.com/photos/5691627/pexels-photo-5691627.jpeg?auto=compress&cs=tinysrgb&w=400";
+      case 'beauty':
+        return "https://images.pexels.com/photos/3985360/pexels-photo-3985360.jpeg?auto=compress&cs=tinysrgb&w=400";
+      case 'fitness':
+        return "https://images.pexels.com/photos/416809/pexels-photo-416809.jpeg?auto=compress&cs=tinysrgb&w=400";
+      case 'electrical':
+        return "https://images.pexels.com/photos/5691627/pexels-photo-5691627.jpeg?auto=compress&cs=tinysrgb&w=400";
+      case 'plumbing':
+        return "https://images.pexels.com/photos/5691627/pexels-photo-5691627.jpeg?auto=compress&cs=tinysrgb&w=400";
+      case 'painting':
+        return "https://images.pexels.com/photos/4099230/pexels-photo-4099230.jpeg?auto=compress&cs=tinysrgb&w=400";
+      case 'appliance':
+        return "https://images.pexels.com/photos/5691627/pexels-photo-5691627.jpeg?auto=compress&cs=tinysrgb&w=400";
+      default:
+        return "https://images.pexels.com/photos/4099230/pexels-photo-4099230.jpeg?auto=compress&cs=tinysrgb&w=400";
+    }
   };
 
   const services = [
@@ -783,32 +832,46 @@ function App() {
                 <div className="animate-spin w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
                 <p className="text-gray-600">Loading available services...</p>
               </div>
-            ) : availableServices.length > 0 ? (
-              availableServices.map((service: any, index: number) => (
+            ) : availableServiceTypes.length > 0 ? (
+              availableServiceTypes.map((serviceType: any, index: number) => (
                 <div
-                  key={`${service.name}-${index}`}
+                  key={`${serviceType.service_type}-${index}`}
                   className="group bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer"
                   onMouseEnter={() => setActiveService(index)}
-                  onClick={() => handleServiceSelect(service.name)}
+                  onClick={() => handleServiceSelect(serviceType.service_type)}
                 >
                   <div className="relative h-40 sm:h-48 overflow-hidden">
                     <img
-                      src={getServiceImage(service.service_type)}
-                      alt={service.name}
+                      src={getServiceImage(serviceType.service_type)}
+                      alt={serviceType.service_type}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
                     <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-2">
-                      <div className="text-blue-600">{getServiceIcon(service.service_type)}</div>
+                      <div className="text-blue-600">{getServiceIcon(serviceType.service_type)}</div>
                     </div>
                     <div className="absolute top-4 right-4 bg-blue-600 text-white px-2 py-1 rounded text-xs font-semibold">
-                      {service.count} provider{service.count !== 1 ? 's' : ''}
+                      {serviceType.count} provider{serviceType.count !== 1 ? 's' : ''}
                     </div>
                   </div>
                   <div className="p-4 sm:p-6">
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2">{service.name}</h3>
-                    <p className="text-sm text-gray-500 capitalize mb-2">{service.service_type}</p>
-                    <p className="text-gray-600 mb-4">Available from {service.count} provider{service.count !== 1 ? 's' : ''}</p>
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2 capitalize">
+                      {serviceType.service_type === 'repair' ? 'Repairs & Maintenance' :
+                       serviceType.service_type === 'beauty' ? 'Beauty & Wellness' :
+                       serviceType.service_type === 'fitness' ? 'Fitness Training' :
+                       serviceType.service_type === 'cleaning' ? 'Home Cleaning' :
+                       serviceType.service_type === 'electrical' ? 'Electrical Services' :
+                       serviceType.service_type === 'plumbing' ? 'Plumbing' :
+                       serviceType.service_type === 'painting' ? 'Painting' :
+                       serviceType.service_type === 'appliance' ? 'Appliance Repair' :
+                       serviceType.service_type}
+                    </h3>
+                    <p className="text-sm text-gray-500 mb-2">
+                      {serviceType.services?.length || 0} service{serviceType.services?.length !== 1 ? 's' : ''} available
+                    </p>
+                    <p className="text-gray-600 mb-4 text-sm">
+                      Available from {serviceType.count} provider{serviceType.count !== 1 ? 's' : ''}
+                    </p>
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-500">Click to view providers</span>
                       <ChevronRight className="w-5 h-5 text-blue-600 group-hover:translate-x-1 transition-transform" />
@@ -817,7 +880,7 @@ function App() {
                 </div>
               ))
             ) : (
-              fallbackServices.map((service, index) => (
+              services.map((service, index) => (
                 <div
                   key={index}
                   className="group bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer"

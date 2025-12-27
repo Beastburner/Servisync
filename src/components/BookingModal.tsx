@@ -317,6 +317,7 @@ interface BookingModalProps {
   service: string;
   onBookingConfirm: (bookingData: any) => void;
   apiKey: string;
+  providerServices?: Array<{ id: string; name: string; price: number; description?: string; service_type: string }>;
 }
 
 export const BookingModal: React.FC<BookingModalProps> = ({ 
@@ -325,11 +326,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   provider, 
   service,
   onBookingConfirm,
-  apiKey
+  apiKey,
+  providerServices = []
 }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [currentLocationAddress, setCurrentLocationAddress] = useState<string>('');
+  const [selectedService, setSelectedService] = useState<any>(null);
   const [showLiveTracking, setShowLiveTracking] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState<any>(null);
   const [isSavingBooking, setIsSavingBooking] = useState(false);
@@ -342,6 +345,23 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     notes: '',
     paymentMethod: 'cash'
   });
+
+  // Determine step titles based on whether service selection is needed
+  // This must be defined early so it can be used in hooks and functions
+  // Show service selection if there are any services (even just one, so user can see what they're booking)
+  const needsServiceSelection = providerServices.length > 0;
+
+  // Initialize selectedService when modal opens or providerServices changes
+  useEffect(() => {
+    if (isOpen && providerServices.length > 0) {
+      // Auto-select the first service if none is selected
+      if (!selectedService) {
+        setSelectedService(providerServices[0]);
+      }
+      console.log('📋 Provider services in BookingModal:', providerServices);
+      console.log('📋 Needs service selection:', needsServiceSelection);
+    }
+  }, [isOpen, providerServices, selectedService]);
 
   // Prevent background scrolling when modal is open
   useEffect(() => {
@@ -360,7 +380,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   // Subscribe to booking status updates when we have a confirmed booking
   useEffect(() => {
-    if (confirmedBooking?.id && currentStep === 4) {
+    const confirmationStep = needsServiceSelection ? 5 : 4;
+    if (confirmedBooking?.id && currentStep === confirmationStep) {
       console.log('📡 Subscribing to booking status updates for:', confirmedBooking.id);
       const unsubscribe = subscribeToBooking(confirmedBooking.id, (updatedBooking) => {
         if (updatedBooking) {
@@ -511,10 +532,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         const { latitude, longitude } = position.coords;
         
         try {
-          // Use Nominatim (OpenStreetMap) Reverse Geocoding API
-          const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1`
-          );
+          // Use Nominatim (OpenStreetMap) Reverse Geocoding API with CORS proxy
+          const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1`;
+          const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(nominatimUrl)}`;
+          
+          const response = await fetch(proxyUrl, {
+            headers: {
+              'User-Agent': 'Servisync/1.0'
+            }
+          });
           
           if (response.ok) {
             const data = await response.json();
@@ -529,14 +555,41 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 user_longitude: longitude
               }));
             } else {
-              alert('Unable to get address for current location');
+              // Fallback: Use coordinates as address if reverse geocoding fails
+              const fallbackAddress = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+              setCurrentLocationAddress(fallbackAddress);
+              setBookingData(prev => ({ 
+                ...prev, 
+                address: fallbackAddress,
+                user_latitude: latitude,
+                user_longitude: longitude
+              }));
+              alert('Could not get full address. Please enter your address manually.');
             }
           } else {
-            alert('Error fetching location address');
+            // Fallback: Use coordinates as address
+            const fallbackAddress = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+            setCurrentLocationAddress(fallbackAddress);
+            setBookingData(prev => ({ 
+              ...prev, 
+              address: fallbackAddress,
+              user_latitude: latitude,
+              user_longitude: longitude
+            }));
+            alert('Could not get full address. Please enter your address manually.');
           }
         } catch (error) {
           console.error('Error getting current location address:', error);
-          alert('Error getting current location address');
+          // Fallback: Use coordinates as address
+          const fallbackAddress = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+          setCurrentLocationAddress(fallbackAddress);
+          setBookingData(prev => ({ 
+            ...prev, 
+            address: fallbackAddress,
+            user_latitude: latitude,
+            user_longitude: longitude
+          }));
+          alert('Could not get full address. Please enter your address manually.');
         } finally {
           setIsLoadingLocation(false);
         }
@@ -579,11 +632,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   };
 
   const handleNextStep = async () => {
-    if (currentStep < 3) {
+    const maxStep = needsServiceSelection ? 4 : 3;
+    if (currentStep < maxStep) {
       setCurrentStep(currentStep + 1);
     } else {
       // Confirm booking - save to Firestore first
       setIsSavingBooking(true);
+      
+      // Use selectedService if available, otherwise fall back to service prop
+      const serviceToUse = selectedService || { name: service, price: 0, service_type: service };
       
       const booking = {
         id: Date.now().toString(),
@@ -593,7 +650,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           name: provider.name || provider.business_name,
           image: provider.image
         },
-        service,
+        service: serviceToUse.name,
+        service_type: serviceToUse.service_type,
+        price: serviceToUse.price,
         ...bookingData,
         status: 'pending', // Provider must accept the booking
         createdAt: new Date().toISOString()
@@ -635,19 +694,85 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const canProceed = () => {
     switch (currentStep) {
       case 1:
+        if (needsServiceSelection) {
+          return selectedService !== null;
+        }
         return bookingData.date && bookingData.time;
       case 2:
+        if (needsServiceSelection) {
+          return bookingData.date && bookingData.time;
+        }
         return bookingData.address && bookingData.phone;
       case 3:
+        if (needsServiceSelection) {
+          return bookingData.address && bookingData.phone;
+        }
         return bookingData.paymentMethod;
+      case 4:
+        if (needsServiceSelection) {
+          return bookingData.paymentMethod;
+        }
+        return true;
       default:
         return true;
     }
   };
 
   const renderStep = () => {
+    // Service Selection Step (only if multiple services available)
+    if (currentStep === 1 && needsServiceSelection) {
+      return (
+        <div className="space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-4">
+              Select a Service
+            </label>
+            <div className="grid grid-cols-1 gap-4">
+              {providerServices.map((svc) => (
+                <div
+                  key={svc.id}
+                  onClick={() => setSelectedService(svc)}
+                  className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                    selectedService?.id === svc.id
+                      ? 'border-blue-600 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300 bg-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900 mb-1">{svc.name}</h3>
+                      {svc.description && (
+                        <p className="text-sm text-gray-600 mb-2">{svc.description}</p>
+                      )}
+                      <p className="text-xs text-gray-500 capitalize">Type: {svc.service_type}</p>
+                    </div>
+                    <div className="ml-4">
+                      <p className="text-2xl font-bold text-green-600">₹{svc.price}</p>
+                    </div>
+                  </div>
+                  {selectedService?.id === svc.id && (
+                    <div className="mt-3 pt-3 border-t border-blue-200">
+                      <div className="flex items-center text-blue-600 text-sm">
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        <span>Selected</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Adjust step numbers if service selection is included
+    const dateTimeStep = needsServiceSelection ? 2 : 1;
+    const addressStep = needsServiceSelection ? 3 : 2;
+    const paymentStep = needsServiceSelection ? 4 : 3;
+
     switch (currentStep) {
-      case 1:
+      case dateTimeStep:
         return (
           <div className="space-y-6">
             <div>
@@ -680,7 +805,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           </div>
         );
 
-      case 2:
+      case addressStep:
         return (
           <div className="space-y-6">
             <div>
@@ -756,7 +881,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           </div>
         );
 
-      case 3:
+
+      case paymentStep:
         return (
           <div className="space-y-6">
             <div>
@@ -809,7 +935,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Service:</span>
-                  <span className="font-medium">{service}</span>
+                  <span className="font-medium">{selectedService?.name || service}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Date:</span>
@@ -821,14 +947,18 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 </div>
                 <div className="flex justify-between border-t pt-2">
                   <span className="text-gray-600">Total:</span>
-                  <span className="font-bold text-lg">{provider?.price}</span>
+                  <span className="font-bold text-lg">₹{selectedService?.price || provider?.price || 0}</span>
                 </div>
               </div>
             </div>
           </div>
         );
 
-      case 4:
+      default:
+        // Confirmation step (step 4 without service selection, step 5 with service selection)
+        const confirmationStep = needsServiceSelection ? 5 : 4;
+        if (currentStep !== confirmationStep) return null;
+        
         // Determine status display based on real-time updates
         const isAccepted = bookingStatus === 'accepted' || bookingStatus === 'scheduled';
         const isRejected = bookingStatus === 'rejected';
@@ -986,13 +1116,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             </div>
           </div>
         );
-
-      default:
-        return null;
     }
   };
 
-  const stepTitles = ['Date & Time', 'Address & Contact', 'Payment & Confirm'];
+  // Step titles based on whether service selection is needed
+  const stepTitles = needsServiceSelection 
+    ? ['Select Service', 'Date & Time', 'Address & Contact', 'Payment & Confirm']
+    : ['Date & Time', 'Address & Contact', 'Payment & Confirm'];
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">

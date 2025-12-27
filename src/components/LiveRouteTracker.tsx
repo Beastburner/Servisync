@@ -458,9 +458,15 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
       if (serviceAddress) {
         try {
           setIsGettingLocation(true);
-          const response = await fetch(
-            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(serviceAddress)}&limit=1&addressdetails=1`
-          );
+          // Use Nominatim with CORS proxy
+          const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(serviceAddress)}&limit=1&addressdetails=1`;
+          const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(nominatimUrl)}`;
+          
+          const response = await fetch(proxyUrl, {
+            headers: {
+              'User-Agent': 'Servisync/1.0'
+            }
+          });
           
           if (response.ok) {
             const data = await response.json();
@@ -474,6 +480,8 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
           }
         } catch (error) {
           console.error('Error geocoding service address:', error);
+        } finally {
+          setIsGettingLocation(false);
         }
       }
 

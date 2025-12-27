@@ -1220,6 +1220,7 @@ export const getAllAvailableServices = async () => {
     const querySnapshot = await getDocs(q);
 
     const servicesMap = new Map<string, { name: string; service_type: string; count: number }>();
+    const serviceTypesMap = new Map<string, { service_type: string; count: number; services: string[] }>();
 
     querySnapshot.docs.forEach((doc) => {
       const providerData = doc.data();
@@ -1237,16 +1238,33 @@ export const getAllAvailableServices = async () => {
             count: 1
           });
         }
+
+        // Track service types
+        const serviceType = service.service_type || 'other';
+        if (serviceTypesMap.has(serviceType)) {
+          const existing = serviceTypesMap.get(serviceType)!;
+          existing.count += 1;
+          if (!existing.services.includes(service.name)) {
+            existing.services.push(service.name);
+          }
+        } else {
+          serviceTypesMap.set(serviceType, {
+            service_type: serviceType,
+            count: 1,
+            services: [service.name]
+          });
+        }
       });
     });
 
     // Convert map to array and sort by count (most popular first)
     const servicesArray = Array.from(servicesMap.values()).sort((a, b) => b.count - a.count);
+    const serviceTypesArray = Array.from(serviceTypesMap.values()).sort((a, b) => b.count - a.count);
 
-    return { data: servicesArray, error: null };
+    return { data: servicesArray, serviceTypes: serviceTypesArray, error: null };
   } catch (error) {
     console.error('Error getting all available services:', error);
-    return { data: [], error };
+    return { data: [], serviceTypes: [], error };
   }
 };
 

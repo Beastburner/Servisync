@@ -31,10 +31,15 @@ export const LocationService: React.FC<LocationServiceProps> = ({ onLocationSele
 
     setIsLoading(true);
     try {
-      // Using Nominatim (OpenStreetMap) geocoding service
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1`
-      );
+      // Using Nominatim (OpenStreetMap) geocoding service with CORS proxy
+      const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1`;
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(nominatimUrl)}`;
+      
+      const response = await fetch(proxyUrl, {
+        headers: {
+          'User-Agent': 'Servisync/1.0'
+        }
+      });
       
       if (response.ok) {
         const data = await response.json();
@@ -91,10 +96,15 @@ export const LocationService: React.FC<LocationServiceProps> = ({ onLocationSele
           const { latitude, longitude } = position.coords;
           
           try {
-            // Reverse geocoding using Nominatim
-            const response = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1`
-            );
+            // Reverse geocoding using Nominatim with CORS proxy
+            const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1`;
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(nominatimUrl)}`;
+            
+            const response = await fetch(proxyUrl, {
+              headers: {
+                'User-Agent': 'Servisync/1.0'
+              }
+            });
             
             if (response.ok) {
               const data = await response.json();
@@ -107,10 +117,25 @@ export const LocationService: React.FC<LocationServiceProps> = ({ onLocationSele
                 
                 setAddress(data.display_name);
                 onLocationSelect(location);
+              } else {
+                // Fallback: Use coordinates as address
+                const location: LocationData = {
+                  address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+                  coordinates: { lat: latitude, lng: longitude },
+                };
+                setAddress(location.address);
+                onLocationSelect(location);
               }
             }
           } catch (error) {
             console.error('Error getting current location:', error);
+            // Fallback: Use coordinates as address
+            const location: LocationData = {
+              address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+              coordinates: { lat: latitude, lng: longitude },
+            };
+            setAddress(location.address);
+            onLocationSelect(location);
           } finally {
             setIsLoading(false);
           }

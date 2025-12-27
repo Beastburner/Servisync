@@ -25,6 +25,7 @@ interface ServiceProvider {
   phone: string;
   coordinates: { lat: number; lng: number };
   image: string;
+  services?: Array<{ id: string; name: string; price: number; description?: string; service_type: string }>;
 }
 
 interface ServiceAreaMapProps {
@@ -167,7 +168,8 @@ export const ServiceAreaMap: React.FC<ServiceAreaMapProps> = ({ location, select
               lat: provider.latitude,
               lng: provider.longitude
             },
-            image: provider.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1'
+            image: provider.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1',
+            services: provider.services || [] // Include provider's services array
           };
         });
 
@@ -316,7 +318,8 @@ export const ServiceAreaMap: React.FC<ServiceAreaMapProps> = ({ location, select
                 lat: provider.latitude,
                 lng: provider.longitude
               },
-              image: provider.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1'
+              image: provider.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1',
+              services: provider.services || [] // Include provider's services array
             };
           });
 
@@ -527,13 +530,30 @@ export const ServiceAreaMap: React.FC<ServiceAreaMapProps> = ({ location, select
                   />
                   <div className="flex-1">
                     <h4 className="font-semibold text-gray-900">{provider.name}</h4>
-                    <p className="text-sm text-gray-600">{provider.service}</p>
                     <div className="flex items-center space-x-1">
                       <Star className="h-4 w-4 text-yellow-400 fill-current" />
                       <span className="text-sm text-gray-600">{provider.rating}</span>
                     </div>
                   </div>
                 </div>
+
+                {/* Provider Services */}
+                {provider.services && provider.services.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-xs text-gray-500 mb-2 font-medium">Services Offered:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {provider.services.map((service: any) => (
+                        <div
+                          key={service.id || service.name}
+                          className="bg-blue-50 border border-blue-200 rounded-md px-2 py-1 text-xs"
+                        >
+                          <span className="font-medium text-blue-900">{service.name}</span>
+                          <span className="text-blue-700 ml-1">₹{service.price}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-3 gap-2 text-sm mb-3">
                   <div className="text-center">
@@ -634,6 +654,8 @@ export const ServiceAreaMap: React.FC<ServiceAreaMapProps> = ({ location, select
         provider={bookingProvider}
         service={bookingProvider?.service || selectedService}
         onBookingConfirm={handleBookingConfirm}
+        apiKey=""
+        providerServices={bookingProvider?.services || []}
       />
     </div>
   );
