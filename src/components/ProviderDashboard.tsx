@@ -168,6 +168,91 @@ const ProviderDashboard: React.FC<ProviderDashboardProps> = ({ userId, onClose }
     }
   };
 
+  // Helper function to check if provider can view map (30 minutes before scheduled time)
+  const canViewMap = (job: any): { allowed: boolean; reason?: string } => {
+    // If service is in-progress, allow viewing immediately
+    if (job.status === 'in-progress' || job.status === 'arrived') {
+      return { allowed: true };
+    }
+
+    // Check scheduled date and time
+    const bookingDate = job.booking_date || job.date || job.bookingDate;
+    const bookingTime = job.booking_time || job.time || job.bookingTime;
+    
+    if (!bookingDate || !bookingTime) {
+      return { allowed: true, reason: 'No scheduled time found' };
+    }
+
+    // Parse booking date and time
+    let scheduledDateTime: Date | null = null;
+    try {
+      const dateParts = bookingDate.includes('-') ? bookingDate.split('-') : [];
+      let year, month, day;
+      
+      if (dateParts.length === 3) {
+        // Check if it's YYYY-MM-DD or DD-MM-YYYY
+        if (dateParts[0].length === 4) {
+          year = parseInt(dateParts[0]);
+          month = parseInt(dateParts[1]) - 1;
+          day = parseInt(dateParts[2]);
+        } else {
+          day = parseInt(dateParts[0]);
+          month = parseInt(dateParts[1]) - 1;
+          year = parseInt(dateParts[2]);
+        }
+      } else {
+        return { allowed: true, reason: 'Invalid date format' };
+      }
+
+      // Parse time (format: HH:MM AM/PM or HH:MM)
+      const timeParts = bookingTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+      if (timeParts) {
+        let hours = parseInt(timeParts[1]);
+        const minutes = parseInt(timeParts[2]);
+        const period = timeParts[3]?.toUpperCase();
+
+        if (period === 'PM' && hours !== 12) {
+          hours += 12;
+        } else if (period === 'AM' && hours === 12) {
+          hours = 0;
+        }
+
+        scheduledDateTime = new Date(year, month, day, hours, minutes);
+      } else {
+        return { allowed: true, reason: 'Invalid time format' };
+      }
+    } catch (error) {
+      return { allowed: true, reason: 'Could not parse scheduled time' };
+    }
+
+    if (!scheduledDateTime) {
+      return { allowed: true, reason: 'Invalid scheduled time format' };
+    }
+
+    // Check if it's within 30 minutes of scheduled time
+    const now = new Date();
+    const timeDiff = scheduledDateTime.getTime() - now.getTime();
+    const minutesUntilScheduled = timeDiff / (1000 * 60);
+
+    if (minutesUntilScheduled > 30) {
+      const hoursUntil = Math.floor(minutesUntilScheduled / 60);
+      const minsUntil = Math.floor(minutesUntilScheduled % 60);
+      let timeStr = '';
+      if (hoursUntil > 0) {
+        timeStr = `${hoursUntil} hour${hoursUntil > 1 ? 's' : ''} ${minsUntil > 0 ? `${minsUntil} min${minsUntil > 1 ? 's' : ''}` : ''}`;
+      } else {
+        timeStr = `${minsUntil} minute${minsUntil > 1 ? 's' : ''}`;
+      }
+      
+      return { 
+        allowed: false, 
+        reason: `Map viewing will be available 30 minutes before the scheduled time (${bookingDate} at ${bookingTime}). Currently ${timeStr} away.` 
+      };
+    }
+
+    return { allowed: true };
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'confirmed':
@@ -632,26 +717,42 @@ const ProviderDashboard: React.FC<ProviderDashboardProps> = ({ userId, onClose }
                         <div className="text-sm text-gray-600 italic">
                           Navigate to customer location. OTP will be generated automatically when you arrive at the doorstep (0.0 km).
                         </div>
-                        <button 
-                          onClick={() => {
-                            setSelectedBookingForMap({
-                              ...job,
-                              provider_id: userId,
-                              provider: {
-                                id: userId,
-                                name: providerData?.business_name || 'You',
-                                image: providerData?.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1',
-                                phone: providerData?.phone || job.customer_phone
-                              },
-                              service_type: job.service_type || job.service
-                            });
-                            setShowMap(true);
-                          }}
-                          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
-                        >
-                          <Map className="h-4 w-4" />
-                          <span>View Map</span>
-                        </button>
+                        {(() => {
+                          const mapCheck = canViewMap(job);
+                          return (
+                            <button 
+                              onClick={() => {
+                                const mapCheck = canViewMap(job);
+                                if (!mapCheck.allowed) {
+                                  alert(mapCheck.reason || 'Map viewing is not available at this time.');
+                                  return;
+                                }
+                                setSelectedBookingForMap({
+                                  ...job,
+                                  provider_id: userId,
+                                  provider: {
+                                    id: userId,
+                                    name: providerData?.business_name || 'You',
+                                    image: providerData?.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1',
+                                    phone: providerData?.phone || job.customer_phone
+                                  },
+                                  service_type: job.service_type || job.service
+                                });
+                                setShowMap(true);
+                              }}
+                              className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
+                                mapCheck.allowed 
+                                  ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                              }`}
+                              disabled={!mapCheck.allowed}
+                              title={mapCheck.allowed ? 'View Map' : mapCheck.reason || 'Map viewing not available'}
+                            >
+                              <Map className="h-4 w-4" />
+                              <span>View Map</span>
+                            </button>
+                          );
+                        })()}
                       </>
                     )}
                     {(job.status || '') === 'arrived' && (
@@ -668,26 +769,42 @@ const ProviderDashboard: React.FC<ProviderDashboardProps> = ({ userId, onClose }
                     )}
                     {(job.status || '') === 'in-progress' && (
                       <>
-                        <button 
-                          onClick={() => {
-                            setSelectedBookingForMap({
-                              ...job,
-                              provider_id: userId,
-                              provider: {
-                                id: userId,
-                                name: providerData?.business_name || 'You',
-                                image: providerData?.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1',
-                                phone: providerData?.phone || job.customer_phone
-                              },
-                              service: job.service_type || job.service
-                            });
-                            setShowMap(true);
-                          }}
-                          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
-                        >
-                          <Map className="h-4 w-4" />
-                          <span>View Map</span>
-                        </button>
+                        {(() => {
+                          const mapCheck = canViewMap(job);
+                          return (
+                            <button 
+                              onClick={() => {
+                                const mapCheck = canViewMap(job);
+                                if (!mapCheck.allowed) {
+                                  alert(mapCheck.reason || 'Map viewing is not available at this time.');
+                                  return;
+                                }
+                                setSelectedBookingForMap({
+                                  ...job,
+                                  provider_id: userId,
+                                  provider: {
+                                    id: userId,
+                                    name: providerData?.business_name || 'You',
+                                    image: providerData?.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1',
+                                    phone: providerData?.phone || job.customer_phone
+                                  },
+                                  service: job.service_type || job.service
+                                });
+                                setShowMap(true);
+                              }}
+                              className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
+                                mapCheck.allowed 
+                                  ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                              }`}
+                              disabled={!mapCheck.allowed}
+                              title={mapCheck.allowed ? 'View Map' : mapCheck.reason || 'Map viewing not available'}
+                            >
+                              <Map className="h-4 w-4" />
+                              <span>View Map</span>
+                            </button>
+                          );
+                        })()}
                         <button 
                           onClick={async () => {
                             try {
@@ -711,26 +828,42 @@ const ProviderDashboard: React.FC<ProviderDashboardProps> = ({ userId, onClose }
                     )}
                   </div>
                   <div className="flex space-x-3">
-                    <button 
-                      onClick={() => {
-                        setSelectedBookingForMap({
-                          ...job,
-                          provider_id: userId,
-                          provider: {
-                            id: userId,
-                            name: providerData?.business_name || 'You',
-                            image: providerData?.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1',
-                            phone: providerData?.phone || job.customer_phone
-                          },
-                          service_type: job.service_type || job.service
-                        });
-                        setShowMap(true);
-                      }}
-                      className="text-blue-600 hover:text-blue-700 font-medium flex items-center space-x-1"
-                    >
-                      <Map className="h-4 w-4" />
-                      <span>View Map</span>
-                    </button>
+                    {(() => {
+                      const mapCheck = canViewMap(job);
+                      return (
+                        <button 
+                          onClick={() => {
+                            const mapCheck = canViewMap(job);
+                            if (!mapCheck.allowed) {
+                              alert(mapCheck.reason || 'Map viewing is not available at this time.');
+                              return;
+                            }
+                            setSelectedBookingForMap({
+                              ...job,
+                              provider_id: userId,
+                              provider: {
+                                id: userId,
+                                name: providerData?.business_name || 'You',
+                                image: providerData?.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1',
+                                phone: providerData?.phone || job.customer_phone
+                              },
+                              service_type: job.service_type || job.service
+                            });
+                            setShowMap(true);
+                          }}
+                          className={`font-medium flex items-center space-x-1 ${
+                            mapCheck.allowed 
+                              ? 'text-blue-600 hover:text-blue-700' 
+                              : 'text-gray-400 cursor-not-allowed'
+                          }`}
+                          disabled={!mapCheck.allowed}
+                          title={mapCheck.allowed ? 'View Map' : mapCheck.reason || 'Map viewing not available'}
+                        >
+                          <Map className="h-4 w-4" />
+                          <span>View Map</span>
+                        </button>
+                      );
+                    })()}
                     <button className="text-blue-600 hover:text-blue-700 font-medium">
                       View Details
                     </button>

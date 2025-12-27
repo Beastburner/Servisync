@@ -1,10 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, useMap, Popup, Polyline } from 'react-leaflet';
 import { Icon } from 'leaflet';
-import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import 'leaflet-routing-machine';
-import 'leaflet-routing-machine/dist/leaflet-routing-machine.css';
 import { Navigation, Phone, Clock, Car, ArrowLeft, CheckCircle, Shield } from 'lucide-react';
 import { subscribeToProviderLocation, generateArrivalOTP, subscribeToBooking } from '../lib/supabase';
 
@@ -48,7 +45,7 @@ const providerIcon = new Icon({
   iconAnchor: [20, 20],
 });
 
-// Routing machine wrapper
+// Direct OSRM API call to get route coordinates that follow roads
 const RoutingMachine: React.FC<{
   providerLocation: [number, number];
   userLocation: [number, number];
@@ -58,199 +55,210 @@ const RoutingMachine: React.FC<{
   onArrival: () => void;
 }> = ({ providerLocation, userLocation, setRouteInfo, setRouteCoordinates, bookingId, onArrival }) => {
   const map = useMap();
-  const routingControlRef = useRef<L.Routing.Control | null>(null);
+  const routeRetryRef = useRef(0);
+  const MAX_RETRIES = 3;
 
   useEffect(() => {
     if (!map) return;
 
-    const createRouting = () => {
-      if (routingControlRef.current) {
-        map.removeControl(routingControlRef.current);
-      }
-
-      console.log('🗺️ Creating route between:', {
+    const fetchRoute = async () => {
+      console.log('🗺️ Fetching route from OSRM:', {
         provider: [providerLocation[0], providerLocation[1]],
         user: [userLocation[0], userLocation[1]]
       });
 
-      const control = L.Routing.control({
-        waypoints: [
-          L.latLng(providerLocation[0], providerLocation[1]),
-          L.latLng(userLocation[0], userLocation[1]),
-        ],
-        lineOptions: {
-          styles: [{ 
-            color: '#2563EB', // Bright blue color for route line
-            weight: 8, // Thicker line for better visibility
-            opacity: 0.95, // More opaque for better visibility
-            dashArray: null // Solid line (not dashed)
-          }],
-        },
-        show: false, // Hide the routing instructions panel
-        addWaypoints: false,
-        draggableWaypoints: false,
-        fitSelectedRoutes: true, // Auto-fit map to show entire route
-        routeWhileDragging: false,
-        createMarker: () => null // 🚫 prevent default markers (we use custom markers)
-      })
-        .on('routesfound', (e: any) => {
-          console.log('✅ Route found!', e);
-          const route = e.routes[0];
-          if (!route) {
-            console.error('❌ No route in routes array');
-            return;
-          }
+      // Try multiple routing services in order of preference
+      // 1. OpenRouteService (free tier, good CORS support)
+      // 2. OSRM with CORS proxy
+      // 3. Direct OSRM (may timeout)
+      
+      const coordinates = `${userLocation[1]},${userLocation[0]};${providerLocation[1]},${providerLocation[0]}`;
+      
+      // Try OpenRouteService first (free, no API key needed for basic usage)
+      let url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=5b3ce3597851110001cf6248e8b0e3c8b8c84c4da8c64b3c9b8c84c4d&coordinates=${coordinates}&geometry=true&geometry_format=geojson`;
+      
+      try {
+        // Create an AbortController for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+
+        let response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+          },
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+        
+        // If OpenRouteService fails, try OSRM with CORS proxy
+        if (!response.ok) {
+          console.log('⚠️ OpenRouteService failed, trying OSRM...');
+          const osrmCoordinates = `${userLocation[1]},${userLocation[0]};${providerLocation[1]},${providerLocation[0]}`;
+          // Use a CORS proxy for OSRM
+          url = `https://cors-anywhere.herokuapp.com/https://router.project-osrm.org/route/v1/driving/${osrmCoordinates}?overview=full&geometries=geojson&alternatives=false`;
           
-          console.log('📍 Route details:', {
-            distance: route.summary.totalDistance,
-            time: route.summary.totalTime,
-            coordinates: route.coordinates?.length || 0
+          const osrmController = new AbortController();
+          const osrmTimeoutId = setTimeout(() => osrmController.abort(), 8000);
+          
+          response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+            },
+            signal: osrmController.signal,
           });
           
-          // Store route coordinates for Polyline fallback
-          if (route.coordinates && route.coordinates.length > 0) {
-            const coords = route.coordinates.map((coord: any) => [coord.lat, coord.lng] as [number, number]);
-            setRouteCoordinates(coords);
-            console.log('✅ Route coordinates stored:', coords.length, 'points');
-          } else if (route.legs && route.legs.length > 0) {
-            // Alternative: extract coordinates from route legs
-            const coords: [number, number][] = [];
-            route.legs.forEach((leg: any) => {
-              if (leg.steps) {
-                leg.steps.forEach((step: any) => {
-                  if (step.geometry && step.geometry.coordinates) {
-                    step.geometry.coordinates.forEach((coord: any) => {
-                      coords.push([coord[1], coord[0]]); // GeoJSON format: [lng, lat] -> [lat, lng]
-                    });
-                  }
-                });
-              }
+          clearTimeout(osrmTimeoutId);
+        }
+
+        if (!response.ok) {
+          throw new Error(`OSRM API error: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        // Handle OpenRouteService response format
+        if (data.routes && data.routes.length > 0) {
+          const route = data.routes[0];
+          routeRetryRef.current = 0; // Reset retry counter on success
+
+          // Extract coordinates from GeoJSON geometry
+          // OpenRouteService returns coordinates as [lng, lat] pairs in GeoJSON format
+          const geometry = route.geometry;
+          let routeCoords: [number, number][] = [];
+
+          if (geometry && geometry.coordinates && Array.isArray(geometry.coordinates)) {
+            routeCoords = geometry.coordinates.map((coord: [number, number]) => {
+              // Convert from [lng, lat] to [lat, lng] for Leaflet
+              return [coord[1], coord[0]] as [number, number];
             });
-            if (coords.length > 0) {
-              setRouteCoordinates(coords);
-              console.log('✅ Route coordinates extracted from legs:', coords.length, 'points');
+
+            if (routeCoords.length > 0) {
+              setRouteCoordinates(routeCoords);
+              console.log('✅ Route coordinates extracted from OpenRouteService:', routeCoords.length, 'points');
+              console.log('📍 First point:', routeCoords[0], 'Last point:', routeCoords[routeCoords.length - 1]);
             }
           }
-          
-          const distanceKm = (route.summary.totalDistance / 1000).toFixed(1);
-          const durationMin = Math.round(route.summary.totalTime / 60);
+
+          // Extract distance and duration (OpenRouteService format)
+          const distanceMeters = route.summary?.distance || route.distance || 0;
+          const durationSeconds = route.summary?.duration || route.duration || 0;
+          const distanceKm = (distanceMeters / 1000).toFixed(1);
+          const durationMin = Math.round(durationSeconds / 60);
+
           setRouteInfo({
             distance: `${distanceKm} km`,
             duration: `${durationMin} mins`,
-            traffic:
-              durationMin < 5
-                ? 'Very close'
-                : durationMin < 15
-                ? 'Light traffic'
-                : 'Moderate traffic',
+            traffic: durationMin < 5 ? 'Very close' : durationMin < 15 ? 'Light traffic' : 'Moderate traffic',
           });
-          
-          // Ensure route line is visible
-          setTimeout(() => {
-            const routeLines = document.querySelectorAll('.leaflet-routing-container .leaflet-routing-geocoders, .leaflet-routing-container path');
-            console.log('🔍 Route lines found:', routeLines.length);
-            routeLines.forEach((line: any) => {
-              if (line.style) {
-                line.style.stroke = '#2563EB';
-                line.style.strokeWidth = '8px';
-                line.style.opacity = '0.95';
-              }
-            });
-          }, 500);
-          
-          // Check if provider has arrived at doorstep (distance is 0.0km or very close - 10 meters)
-          // Using 0.01 km (10 meters) as threshold for doorstep arrival
+
+          // Check for arrival
           const distanceValue = parseFloat(distanceKm);
-          console.log('📍 Route found - Distance:', distanceKm, 'km, Value:', distanceValue, 'Booking ID:', bookingId, 'Has callback:', !!onArrival);
-          
-          if (distanceValue <= 0.01) { // 10 meters = doorstep
-            console.log('✅ Provider at doorstep! Distance check passed (<= 0.01km / 10 meters)');
-            if (!bookingId) {
-              console.warn('⚠️ Booking ID is missing! Cannot generate OTP.');
-            } else if (!onArrival) {
-              console.warn('⚠️ onArrival callback is missing!');
-            } else {
-              console.log('🚨 Provider arrived at doorstep! Calling onArrival callback to generate OTP');
-              // Call onArrival callback to handle OTP generation in parent component
-              onArrival();
-            }
-          } else {
-            console.log('⏳ Provider not yet at doorstep. Distance:', distanceValue.toFixed(3), 'km (', (distanceValue * 1000).toFixed(0), 'meters)');
-          }
-        })
-        .on('routingerror', (e: any) => {
-          console.error('Routing error:', e);
-          // If routing fails, calculate direct distance as fallback
-          const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-            const R = 6371; // Radius of the Earth in km
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLon = (lon2 - lon1) * Math.PI / 180;
-            const a = 
-              Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            return R * c;
-          };
-          
-          const directDistance = calculateDistance(
-            providerLocation[0], providerLocation[1],
-            userLocation[0], userLocation[1]
-          );
-          const distanceKm = directDistance.toFixed(3);
-          
-          console.log('📍 Direct distance calculation (fallback):', distanceKm, 'km (', (directDistance * 1000).toFixed(0), 'meters)');
-          
-          // Only generate OTP when provider is at doorstep (0.01 km = 10 meters)
-          if (directDistance <= 0.01 && bookingId && onArrival) {
-            console.log('🚨 Provider arrived at doorstep (direct distance)! Calling onArrival callback');
+          if (distanceValue <= 0.01 && bookingId && onArrival) {
+            console.log('🚨 Provider arrived at doorstep!');
             onArrival();
           }
-        })
-        .addTo(map);
+        } 
+        // Handle OSRM response format (fallback)
+        else if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+          const route = data.routes[0];
+          routeRetryRef.current = 0;
 
-      // 🚫 hide the default itinerary panel
-      const panels = document.getElementsByClassName('leaflet-routing-container');
-      Array.from(panels).forEach((p: any) => (p.style.display = 'none'));
+          const geometry = route.geometry;
+          let routeCoords: [number, number][] = [];
 
-      routingControlRef.current = control;
-      
-      // Ensure route line is visible - check after route is rendered
-      setTimeout(() => {
-        // Find all SVG paths in the map (route lines)
-        const mapContainer = map.getContainer();
-        const svgPaths = mapContainer.querySelectorAll('svg path');
-        svgPaths.forEach((path: any) => {
-          const stroke = path.getAttribute('stroke') || path.style.stroke;
-          // If it's a route line (has stroke), make sure it's blue and visible
-          if (stroke || path.getAttribute('fill') === 'none') {
-            path.setAttribute('stroke', '#2563EB');
-            path.setAttribute('stroke-width', '8');
-            path.setAttribute('stroke-opacity', '0.95');
-            path.setAttribute('fill', 'none');
-            path.style.stroke = '#2563EB';
-            path.style.strokeWidth = '8px';
-            path.style.opacity = '0.95';
-            console.log('✅ Route line styled and made visible');
+          if (geometry && geometry.coordinates && Array.isArray(geometry.coordinates)) {
+            routeCoords = geometry.coordinates.map((coord: [number, number]) => {
+              return [coord[1], coord[0]] as [number, number];
+            });
+
+            if (routeCoords.length > 0) {
+              setRouteCoordinates(routeCoords);
+              console.log('✅ Route coordinates extracted from OSRM:', routeCoords.length, 'points');
+            }
           }
+
+          const distanceMeters = route.distance || 0;
+          const durationSeconds = route.duration || 0;
+          const distanceKm = (distanceMeters / 1000).toFixed(1);
+          const durationMin = Math.round(durationSeconds / 60);
+
+          setRouteInfo({
+            distance: `${distanceKm} km`,
+            duration: `${durationMin} mins`,
+            traffic: durationMin < 5 ? 'Very close' : durationMin < 15 ? 'Light traffic' : 'Moderate traffic',
+          });
+
+          const distanceValue = parseFloat(distanceKm);
+          if (distanceValue <= 0.01 && bookingId && onArrival) {
+            console.log('🚨 Provider arrived at doorstep!');
+            onArrival();
+          }
+        } else {
+          throw new Error(`Routing service returned error: ${data.error?.message || data.code || 'Unknown error'}`);
+        }
+      } catch (error: any) {
+        console.warn('⚠️ Routing service error, using fallback:', error);
+
+        // Fallback to direct distance calculation
+        const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+          const R = 6371;
+          const dLat = (lat2 - lat1) * Math.PI / 180;
+          const dLon = (lon2 - lon1) * Math.PI / 180;
+          const a = 
+            Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+          return R * c;
+        };
+
+        const directDistance = calculateDistance(
+          providerLocation[0], providerLocation[1],
+          userLocation[0], userLocation[1]
+        );
+        const distanceKm = directDistance.toFixed(1);
+        const estimatedMinutes = Math.round((directDistance / 30) * 60);
+
+        setRouteInfo({
+          distance: `${distanceKm} km`,
+          duration: `${estimatedMinutes} mins`,
+          traffic: estimatedMinutes < 15 ? 'Light traffic' : 'Moderate traffic',
         });
-      }, 1500);
+
+        // Use direct line as fallback
+        setRouteCoordinates(null);
+
+        // Check for arrival
+        if (directDistance <= 0.01 && bookingId && onArrival) {
+          console.log('🚨 Provider arrived at doorstep (fallback)!');
+          onArrival();
+        }
+
+        // Retry routing after delay if under max retries
+        if (routeRetryRef.current < MAX_RETRIES) {
+          routeRetryRef.current++;
+          setTimeout(() => {
+            console.log(`🔄 Retrying route (attempt ${routeRetryRef.current}/${MAX_RETRIES})...`);
+            fetchRoute();
+          }, 5000 * routeRetryRef.current); // Exponential backoff
+        }
+      }
     };
 
-    // Initial route
-    createRouting();
+    // Initial route fetch
+    fetchRoute();
 
-    // Refresh route every 30 seconds (reduced frequency to prevent too fast updates)
+    // Refresh route every 60 seconds (longer interval to avoid rate limiting)
     const interval = setInterval(() => {
-      createRouting();
-    }, 30000);
+      routeRetryRef.current = 0; // Reset retry counter
+      fetchRoute();
+    }, 60000);
 
     return () => {
       clearInterval(interval);
-      if (routingControlRef.current) {
-        map.removeControl(routingControlRef.current);
-        routingControlRef.current = null;
-      }
     };
   }, [map, providerLocation, userLocation, bookingId, onArrival]);
 
@@ -399,16 +407,8 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
         return;
       }
 
-      // Check time restriction based on user type
-      // Providers can view map at any time
-      // Customers can only view map 30 minutes before scheduled time
-      if (isProvider) {
-        // Providers can view map at any time
-        setTrackingAllowed({ allowed: true });
-        return;
-      }
-
-      // For customers, check if it's within 30 minutes of scheduled time
+      // Check time restriction - both providers and customers can only view map 30 minutes before scheduled time
+      // Exception: If service is in-progress, allow tracking immediately
       const now = new Date();
       const timeDiff = scheduledDateTime.getTime() - now.getTime();
       const minutesUntilScheduled = timeDiff / (1000 * 60);
@@ -423,14 +423,15 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
           timeStr = `${minsUntil} minute${minsUntil > 1 ? 's' : ''}`;
         }
         
+        const userType = isProvider ? 'Map viewing' : 'Map viewing';
         setTrackingAllowed({ 
           allowed: false, 
-          reason: `Map viewing will be available 30 minutes before your scheduled time (${bookingDate} at ${bookingTime}). Currently ${timeStr} away.` 
+          reason: `${userType} will be available 30 minutes before the scheduled time (${bookingDate} at ${bookingTime}). Currently ${timeStr} away.` 
         });
         return;
       }
 
-      // Tracking is allowed for customers (within 30 minutes)
+      // Tracking is allowed (within 30 minutes or service in-progress)
       setTrackingAllowed({ allowed: true });
     };
 
@@ -747,20 +748,33 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
               </Marker>
             )}
 
-            {/* Route Line - Fallback Polyline if routing service fails */}
-            {providerLocation && userLocation && (
+            {/* Route Line - Show proper road route if available, otherwise direct line */}
+            {/* Note: The routing control also draws its own line, but we use Polyline for better control */}
+            {providerLocation && userLocation && routeCoordinates && routeCoordinates.length > 0 && (
               <Polyline
-                positions={(routeCoordinates && routeCoordinates.length > 0) ? routeCoordinates : [providerLocation, userLocation]}
+                positions={routeCoordinates}
                 pathOptions={{
                   color: '#2563EB',
                   weight: 8,
                   opacity: 0.95,
-                  dashArray: (routeCoordinates && routeCoordinates.length > 0) ? undefined : '10, 10' // Dashed if direct line, solid if route
+                  dashArray: undefined // Solid blue line for road route
+                }}
+              />
+            )}
+            {/* Fallback direct line if routing failed */}
+            {providerLocation && userLocation && (!routeCoordinates || routeCoordinates.length === 0) && (
+              <Polyline
+                positions={[providerLocation, userLocation]}
+                pathOptions={{
+                  color: '#2563EB',
+                  weight: 6,
+                  opacity: 0.7,
+                  dashArray: '10, 10' // Dashed line for direct/fallback
                 }}
               />
             )}
 
-            {/* Routing */}
+            {/* Routing - Get proper road route */}
             {providerLocation && (
               <RoutingMachine
                 providerLocation={providerLocation}
