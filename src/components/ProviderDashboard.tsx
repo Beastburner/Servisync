@@ -821,7 +821,8 @@ const ProviderDashboard: React.FC<ProviderDashboardProps> = ({ userId, onClose, 
                     {['scheduled', 'accepted'].includes(job.status || '') && (
                       <>
                         <div className="text-sm text-gray-600 italic">
-                          Navigate to customer location. OTP will be generated automatically when you arrive at the doorstep (0.0 km).
+                          Navigate to customer location. OTP will be generated automatically when you arrive at the doorstep (within 10m). 
+                          If OTP isn't generated due to routing issues, you can manually request it from the map view.
                         </div>
                         {(() => {
                           const mapCheck = canViewMap(job);
