@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, useMap, Popup, Polyline } from 'react-
 import { Icon } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Navigation, Phone, Clock, Car, ArrowLeft, CheckCircle, Shield } from 'lucide-react';
-import { subscribeToProviderLocation, generateArrivalOTP, subscribeToBooking } from '../lib/supabase';
+import { subscribeToProviderLocation, generateArrivalOTP, subscribeToBooking, verifyArrivalOTP } from '../lib/supabase';
 
 delete (Icon.Default.prototype as any)._getIconUrl;
 Icon.Default.mergeOptions({
@@ -287,6 +287,11 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
   const [bookingStatus, setBookingStatus] = useState<string>(booking.status || booking.booking_status || '');
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const otpGeneratedRef = useRef(false);
+  const [currentDistance, setCurrentDistance] = useState<number | null>(null);
+  const [isRequestingOTP, setIsRequestingOTP] = useState(false);
+  const [otpInput, setOtpInput] = useState('');
+  const [isVerifyingOTP, setIsVerifyingOTP] = useState(false);
+  const [showOTPInput, setShowOTPInput] = useState(false);
 
   // Get booking ID - check multiple possible fields
   const bookingId = booking.id || booking.booking_id || null;
@@ -568,15 +573,20 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
     
     const unsubscribe = subscribeToBooking(booking.id, (updatedBooking) => {
       if (updatedBooking) {
-        setBookingStatus(updatedBooking.status || '');
+        const newStatus = updatedBooking.status || '';
+        setBookingStatus(newStatus);
         if (updatedBooking.arrival_otp) {
           setArrivalOTP(updatedBooking.arrival_otp);
+        }
+        // Show OTP input for providers when status is 'arrived' (OTP may be generated separately)
+        if (isProvider && newStatus === 'arrived') {
+          setShowOTPInput(true);
         }
       }
     });
     
     return () => unsubscribe();
-  }, [booking.id]);
+  }, [booking.id, isProvider]);
 
   // Continuous distance check (independent of routing service)
   useEffect(() => {
@@ -601,6 +611,9 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
         providerLocation[0], providerLocation[1],
         userLocation[0], userLocation[1]
       );
+      
+      // Update current distance for manual OTP request button
+      setCurrentDistance(directDistance);
       
       console.log('📏 Direct distance check:', directDistance.toFixed(3), 'km (', (directDistance * 1000).toFixed(0), 'meters)');
       
@@ -890,6 +903,161 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Manual OTP Request Button for Providers - Show when close but OTP not generated */}
+        {isProvider && 
+         bookingStatus !== 'arrived' && 
+         bookingStatus !== 'in-progress' && 
+         currentDistance !== null && 
+         currentDistance <= 0.05 && 
+         !otpGeneratedRef.current && (
+          <div className="mt-4 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-lg p-4 border-2 border-orange-400">
+            <div className="flex items-center justify-center space-x-3 mb-3">
+              <Shield className="h-6 w-6 text-orange-600" />
+              <h4 className="text-lg font-bold text-orange-800">At Location - Request OTP</h4>
+            </div>
+            <div className="text-center">
+              <p className="text-sm text-gray-700 mb-3">
+                You're at the customer location ({currentDistance ? (currentDistance * 1000).toFixed(0) : '0'}m away). 
+                If OTP wasn't generated automatically due to routing issues, you can request it manually.
+              </p>
+              <button
+                onClick={async () => {
+                  if (!bookingId) {
+                    alert('Booking ID not found. Please try again.');
+                    return;
+                  }
+                  
+                  setIsRequestingOTP(true);
+                  try {
+                    const result = await generateArrivalOTP(bookingId);
+                    if (result.data && result.data.otp) {
+                      setArrivalOTP(result.data.otp);
+                      setBookingStatus('arrived');
+                      otpGeneratedRef.current = true;
+                      setShowOTPInput(true);
+                      alert(`✅ OTP generated successfully! Please ask the customer for OTP: ${result.data.otp}`);
+                      console.log('✅ OTP generated manually:', result.data.otp);
+                    } else if (result.error) {
+                      console.error('❌ Error generating OTP:', result.error);
+                      alert(`Error generating OTP: ${result.error instanceof Error ? result.error.message : 'Unknown error'}. Please try again.`);
+                    }
+                  } catch (error) {
+                    console.error('❌ Exception generating OTP:', error);
+                    alert('Error generating OTP. Please try again.');
+                  } finally {
+                    setIsRequestingOTP(false);
+                  }
+                }}
+                disabled={isRequestingOTP || !bookingId}
+                className="w-full bg-orange-600 text-white py-3 rounded-lg font-semibold hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+              >
+                {isRequestingOTP ? (
+                  <>
+                    <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full"></div>
+                    <span>Generating OTP...</span>
+                  </>
+                ) : (
+                  <>
+                    <Shield className="h-5 w-5" />
+                    <span>Request OTP from Customer</span>
+                  </>
+                )}
+              </button>
+              <p className="text-xs text-gray-600 mt-2">
+                After requesting, ask the customer for the OTP and verify it to start the service.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* OTP Verification Input for Providers - Show when OTP is available */}
+        {isProvider && 
+         bookingStatus === 'arrived' && 
+         showOTPInput && (
+          <div className="mt-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border-2 border-blue-500">
+            <div className="flex items-center justify-center space-x-3 mb-3">
+              <Shield className="h-6 w-6 text-blue-600" />
+              <h4 className="text-lg font-bold text-blue-800">Verify OTP & Start Service</h4>
+            </div>
+            <div className="text-center">
+              <p className="text-sm text-gray-700 mb-3">
+                Ask the customer for the OTP and enter it below to verify arrival and start the service.
+              </p>
+              <div className="mb-3">
+                <input
+                  type="text"
+                  value={otpInput}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/\D/g, '').slice(0, 6);
+                    setOtpInput(value);
+                  }}
+                  placeholder="Enter 6-digit OTP"
+                  className="w-full p-3 text-center text-2xl font-bold tracking-widest border-2 border-blue-500 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  maxLength={6}
+                />
+              </div>
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => {
+                    setShowOTPInput(false);
+                    setOtpInput('');
+                  }}
+                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (otpInput.length !== 6) {
+                      alert('Please enter a 6-digit OTP');
+                      return;
+                    }
+
+                    if (!bookingId) {
+                      alert('Booking ID not found. Please try again.');
+                      return;
+                    }
+
+                    setIsVerifyingOTP(true);
+                    try {
+                      const result = await verifyArrivalOTP(bookingId, otpInput);
+                      if (result.error) {
+                        alert(`OTP verification failed: ${result.error instanceof Error ? result.error.message : 'Invalid OTP. Please try again.'}`);
+                        setOtpInput('');
+                      } else {
+                        alert('✅ OTP verified successfully! Service started.');
+                        setBookingStatus('in-progress');
+                        setShowOTPInput(false);
+                        setOtpInput('');
+                        console.log('✅ OTP verified, service started');
+                      }
+                    } catch (error: any) {
+                      console.error('Error verifying OTP:', error);
+                      alert('Error verifying OTP. Please try again.');
+                    } finally {
+                      setIsVerifyingOTP(false);
+                    }
+                  }}
+                  disabled={otpInput.length !== 6 || isVerifyingOTP || !bookingId}
+                  className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                >
+                  {isVerifyingOTP ? (
+                    <>
+                      <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full"></div>
+                      <span>Verifying...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="h-5 w-5" />
+                      <span>Verify & Start Service</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* OTP Display when provider arrives - Only show to customers, not providers */}
         {arrivalOTP && bookingStatus === 'arrived' && !isProvider && (
