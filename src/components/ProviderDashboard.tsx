@@ -16,7 +16,7 @@ import {
   EyeOff,
   Shield
 } from 'lucide-react';
-import { getProviderBookings, getServiceProvider, updateLocationVisibility, acceptBooking, rejectBooking, updateBookingStatus, subscribeToProviderBookings, verifyArrivalOTP } from '../lib/supabase';
+import { getProviderBookings, getServiceProvider, updateLocationVisibility, acceptBooking, rejectBooking, updateBookingStatus, subscribeToProviderBookings, verifyArrivalOTP, generateArrivalOTP } from '../lib/supabase';
 import { ProviderLocationTracker } from './ProviderLocationTracker';
 import { LiveRouteTracker } from './LiveRouteTracker';
 
@@ -46,6 +46,8 @@ const ProviderDashboard: React.FC<ProviderDashboardProps> = ({ userId, onClose, 
   const [selectedBookingForOTP, setSelectedBookingForOTP] = useState<any>(null);
   const [otpInput, setOtpInput] = useState('');
   const [isVerifyingOTP, setIsVerifyingOTP] = useState(false);
+  const [isRequestingOTP, setIsRequestingOTP] = useState(false);
+  const [requestingOTPForBooking, setRequestingOTPForBooking] = useState<string | null>(null);
 
   // Calculate real stats from bookings and provider data
   const calculateStats = () => {
@@ -820,46 +822,96 @@ const ProviderDashboard: React.FC<ProviderDashboardProps> = ({ userId, onClose, 
                     )}
                     {['scheduled', 'accepted'].includes(job.status || '') && (
                       <>
-                        <div className="text-sm text-gray-600 italic">
+                        <div className="text-sm text-gray-600 italic mb-3">
                           Navigate to customer location. OTP will be generated automatically when you arrive at the doorstep (within 10m). 
-                          If OTP isn't generated due to routing issues, you can manually request it from the map view.
+                          If OTP isn't generated due to routing issues, you can manually request it below.
                         </div>
-                        {(() => {
-                          const mapCheck = canViewMap(job);
-                          return (
-                            <button 
-                              onClick={() => {
-                                const mapCheck = canViewMap(job);
-                                if (!mapCheck.allowed) {
-                                  alert(mapCheck.reason || 'Map viewing is not available at this time.');
-                                  return;
+                        <div className="flex space-x-3">
+                          {(() => {
+                            const mapCheck = canViewMap(job);
+                            return (
+                              <button 
+                                onClick={() => {
+                                  const mapCheck = canViewMap(job);
+                                  if (!mapCheck.allowed) {
+                                    alert(mapCheck.reason || 'Map viewing is not available at this time.');
+                                    return;
+                                  }
+                                  setSelectedBookingForMap({
+                                    ...job,
+                                    provider_id: userId,
+                                    provider: {
+                                      id: userId,
+                                      name: providerData?.business_name || 'You',
+                                      image: providerData?.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1',
+                                      phone: providerData?.phone || job.customer_phone
+                                    },
+                                    service_type: job.service_type || job.service
+                                  });
+                                  setShowMap(true);
+                                }}
+                                className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
+                                  mapCheck.allowed 
+                                    ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                }`}
+                                disabled={!mapCheck.allowed}
+                                title={mapCheck.allowed ? 'View Map' : mapCheck.reason || 'Map viewing not available'}
+                              >
+                                <Map className="h-4 w-4" />
+                                <span>View Map</span>
+                              </button>
+                            );
+                          })()}
+                          <button
+                            onClick={async () => {
+                              if (!job.id) {
+                                alert('Booking ID not found. Please try again.');
+                                return;
+                              }
+                              
+                              const confirmRequest = window.confirm(
+                                'Are you at the customer location? This will generate an OTP that you need to get from the customer to verify arrival.'
+                              );
+                              
+                              if (!confirmRequest) return;
+                              
+                              setRequestingOTPForBooking(job.id);
+                              setIsRequestingOTP(true);
+                              try {
+                                const result = await generateArrivalOTP(job.id);
+                                if (result.data && result.data.otp) {
+                                  alert(`✅ OTP generated successfully!\n\nOTP: ${result.data.otp}\n\nPlease ask the customer for this OTP and verify it to start the service.`);
+                                  fetchProviderData(); // Refresh bookings to show "arrived" status
+                                } else if (result.error) {
+                                  console.error('❌ Error generating OTP:', result.error);
+                                  alert(`Error generating OTP: ${result.error instanceof Error ? result.error.message : 'Unknown error'}. Please try again.`);
                                 }
-                                setSelectedBookingForMap({
-                                  ...job,
-                                  provider_id: userId,
-                                  provider: {
-                                    id: userId,
-                                    name: providerData?.business_name || 'You',
-                                    image: providerData?.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1',
-                                    phone: providerData?.phone || job.customer_phone
-                                  },
-                                  service_type: job.service_type || job.service
-                                });
-                                setShowMap(true);
-                              }}
-                              className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
-                                mapCheck.allowed 
-                                  ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                              }`}
-                              disabled={!mapCheck.allowed}
-                              title={mapCheck.allowed ? 'View Map' : mapCheck.reason || 'Map viewing not available'}
-                            >
-                              <Map className="h-4 w-4" />
-                              <span>View Map</span>
-                            </button>
-                          );
-                        })()}
+                              } catch (error) {
+                                console.error('❌ Exception generating OTP:', error);
+                                alert('Error generating OTP. Please try again.');
+                              } finally {
+                                setIsRequestingOTP(false);
+                                setRequestingOTPForBooking(null);
+                              }
+                            }}
+                            disabled={isRequestingOTP || requestingOTPForBooking === job.id}
+                            className="px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Request OTP manually if you're at the location but OTP wasn't generated automatically"
+                          >
+                            {isRequestingOTP && requestingOTPForBooking === job.id ? (
+                              <>
+                                <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
+                                <span>Generating...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Shield className="h-4 w-4" />
+                                <span>Request OTP</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </>
                     )}
                     {(job.status || '') === 'arrived' && (

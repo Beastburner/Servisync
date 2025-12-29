@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useEffect } from 'react';
-import { Calendar, Clock, MapPin, Star, Phone, ArrowLeft, Filter, Search } from 'lucide-react';
+import { Calendar, Clock, MapPin, Star, Phone, ArrowLeft, Filter, Search, Shield } from 'lucide-react';
 import { getUserBookings, subscribeToBookings, getProviderServices } from '../lib/supabase';
 import { LiveRouteTracker } from './LiveRouteTracker';
 
@@ -25,8 +25,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userId, onClose }) => {
     if (userId) {
       const unsubscribe = subscribeToBookings(userId, (payload) => {
         console.log('Real-time booking update:', payload);
-        if (payload.new) {
-          // Refresh bookings when a new one is added or updated
+        // Refresh bookings when a booking is added, updated, or status changes
+        if (payload.new || payload.old) {
           fetchBookings();
         }
       });
@@ -290,6 +290,23 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userId, onClose }) => {
                       </div>
                     )}
 
+                    {/* OTP Display Section - Show when provider has arrived */}
+                    {booking.status === 'arrived' && booking.arrival_otp && (
+                      <div className="mt-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border-2 border-green-500">
+                        <div className="flex items-center justify-center space-x-3 mb-3">
+                          <Shield className="h-6 w-6 text-green-600" />
+                          <h4 className="text-lg font-bold text-green-800">Provider Has Arrived!</h4>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-sm text-gray-700 mb-2">Share this OTP with the provider to verify arrival:</p>
+                          <div className="bg-white rounded-lg p-4 border-2 border-green-500">
+                            <p className="text-3xl font-bold text-green-600 tracking-widest">{booking.arrival_otp}</p>
+                          </div>
+                          <p className="text-xs text-gray-600 mt-2">Provider will verify this OTP to start the service</p>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex justify-between items-center mt-4 pt-4 border-t">
                       <div className="flex space-x-3">
                         {booking.status === 'pending' && (
@@ -300,6 +317,11 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userId, onClose }) => {
                         {booking.status === 'rejected' && (
                           <div className="text-sm text-red-600">
                             ❌ This booking was rejected by the provider
+                          </div>
+                        )}
+                        {booking.status === 'arrived' && (
+                          <div className="text-sm text-green-600">
+                            ✅ Provider has arrived! Check OTP above.
                           </div>
                         )}
                         {['accepted', 'scheduled', 'in-progress'].includes(booking.status) && (() => {
