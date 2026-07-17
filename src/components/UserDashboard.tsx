@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { useEffect } from 'react';
-import { Calendar, Clock, MapPin, Star, Phone, ArrowLeft, Filter, Search, Shield } from 'lucide-react';
-import { getUserBookings, subscribeToBookings, getProviderServices } from '../lib/supabase';
+import { Calendar, Clock, MapPin, Star, Phone, ArrowLeft, Search, Shield, X, CheckCircle2, Loader2, FileText } from 'lucide-react';
+import { getUserBookings, subscribeToBookings, getProviderServices, cancelBooking, submitReview } from '../lib/supabase';
 import { LiveRouteTracker } from './LiveRouteTracker';
+import { InvoiceModal } from './InvoiceModal';
 
 interface UserDashboardProps {
   userId: string;
   onClose: () => void;
+  onRebook?: (serviceType: string, providerId: string) => void;
 }
 
-const UserDashboard: React.FC<UserDashboardProps> = ({ userId, onClose }) => {
+const UserDashboard: React.FC<UserDashboardProps> = ({ userId, onClose, onRebook }) => {
   const [activeTab, setActiveTab] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [bookings, setBookings] = useState<any[]>([]);
@@ -17,6 +19,18 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userId, onClose }) => {
   const [showLiveTracking, setShowLiveTracking] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
   const [providerServicesMap, setProviderServicesMap] = useState<{ [providerId: string]: any[] }>({});
+
+  // Cancel booking state
+  const [cancelBookingId, setCancelBookingId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [isCancelling, setIsCancelling] = useState(false);
+
+  // Rating state
+  const [ratingBooking, setRatingBooking] = useState<any | null>(null);
+  const [ratingStars, setRatingStars] = useState(5);
+  const [ratingComment, setRatingComment] = useState('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [invoiceBooking, setInvoiceBooking] = useState<any>(null);
 
   useEffect(() => {
     fetchBookings();
@@ -442,36 +456,43 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userId, onClose }) => {
                             </button>
                           );
                         })()}
-                        {booking.status === 'completed' && (
-                          <button 
-                            onClick={() => {
-                              alert('Rating feature coming soon!');
-                            }}
-                            className="text-green-600 hover:text-green-700 font-medium"
+                        {booking.status === 'completed' && !booking.review_submitted && (
+                          <button
+                            onClick={() => { setRatingBooking(booking); setRatingStars(5); setRatingComment(''); }}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-yellow-50 border border-yellow-300 text-yellow-700 rounded-lg hover:bg-yellow-100 font-medium text-sm"
                           >
-                            Rate Service
+                            <Star className="w-4 h-4" /> Rate Service
+                          </button>
+                        )}
+                        {booking.status === 'completed' && booking.review_submitted && (
+                          <span className="flex items-center gap-1 text-green-600 text-sm font-medium mr-2">
+                            <CheckCircle2 className="w-4 h-4" /> Reviewed ({'★'.repeat(booking.review_rating)})
+                          </span>
+                        )}
+                        {booking.status === 'completed' && (
+                          <button
+                            onClick={() => setInvoiceBooking(booking)}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-gray-50 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 font-medium text-sm"
+                          >
+                            <FileText className="w-4 h-4" /> Invoice
+                          </button>
+                        )}
+                        {booking.status === 'completed' && onRebook && (
+                          <button
+                            onClick={() => onRebook(booking.service_type, booking.provider_id)}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-100 font-medium text-sm"
+                          >
+                            🔁 Book Again
                           </button>
                         )}
                       </div>
                       <div className="flex space-x-3">
-                        <button 
-                          onClick={() => {
-                            alert(`Booking Details:\n\nService: ${booking.service_type}\nProvider: ${booking.service_providers?.business_name || 'N/A'}\nDate: ${booking.booking_date}\nTime: ${booking.booking_time}\nAddress: ${booking.service_address}\nStatus: ${booking.status}\nAmount: ₹${booking.total_amount}`);
-                          }}
-                          className="text-gray-600 hover:text-gray-800 font-medium"
-                        >
-                          View Details
-                        </button>
                         {['pending', 'accepted', 'scheduled'].includes(booking.status) && (
-                          <button 
-                            onClick={() => {
-                              if (confirm('Are you sure you want to cancel this booking?')) {
-                                alert('Cancel booking feature coming soon!');
-                              }
-                            }}
-                            className="text-red-600 hover:text-red-700 font-medium"
+                          <button
+                            onClick={() => { setCancelBookingId(booking.id); setCancelReason(''); }}
+                            className="text-red-600 hover:text-red-700 font-medium text-sm"
                           >
-                            Cancel
+                            Cancel Booking
                           </button>
                         )}
                       </div>
@@ -492,6 +513,110 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userId, onClose }) => {
           isProvider={false}
         />
       )}
+
+      {/* ── Cancel Booking Modal ── */}
+      {cancelBookingId && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10001] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900">Cancel Booking</h3>
+              <button onClick={() => setCancelBookingId(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-gray-600 mb-4">Please select a reason for cancellation:</p>
+            <div className="space-y-2 mb-4">
+              {['Change of plans', 'Found another provider', 'Emergency / unavailable', 'Pricing issue', 'Other'].map(r => (
+                <label key={r} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  cancelReason === r ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
+                }`}>
+                  <input type="radio" name="reason" value={r} checked={cancelReason === r} onChange={() => setCancelReason(r)} className="accent-blue-600" />
+                  <span className="text-sm text-gray-700">{r}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setCancelBookingId(null)} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Keep Booking</button>
+              <button
+                disabled={!cancelReason || isCancelling}
+                onClick={async () => {
+                  if (!cancelReason) return;
+                  setIsCancelling(true);
+                  const { error } = await cancelBooking(cancelBookingId, cancelReason);
+                  setIsCancelling(false);
+                  if (error) { alert('Failed to cancel. Please try again.'); return; }
+                  setCancelBookingId(null);
+                  fetchBookings();
+                }}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isCancelling && <Loader2 className="w-4 h-4 animate-spin" />}
+                Confirm Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Rate Service Modal ── */}
+      {ratingBooking && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10001] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900">Rate Your Experience</h3>
+              <button onClick={() => setRatingBooking(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-gray-500 text-sm mb-4">{ratingBooking.service_type} · {ratingBooking.service_providers?.business_name}</p>
+
+            {/* Star selector */}
+            <div className="flex justify-center gap-3 mb-6">
+              {[1,2,3,4,5].map(s => (
+                <button key={s} onClick={() => setRatingStars(s)} className="text-4xl transition-transform hover:scale-110">
+                  <span className={s <= ratingStars ? 'text-yellow-400' : 'text-gray-300'}>★</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-center text-sm font-medium text-gray-700 mb-4">
+              {['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent!'][ratingStars]}
+            </p>
+
+            <textarea
+              value={ratingComment}
+              onChange={e => setRatingComment(e.target.value)}
+              placeholder="Share your experience (optional)..."
+              rows={3}
+              className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none mb-4"
+            />
+
+            <button
+              disabled={isSubmittingReview}
+              onClick={async () => {
+                setIsSubmittingReview(true);
+                const { error } = await submitReview({
+                  bookingId: ratingBooking.id,
+                  userId,
+                  providerId: ratingBooking.provider_id,
+                  rating: ratingStars,
+                  comment: ratingComment,
+                  serviceType: ratingBooking.service_type,
+                });
+                setIsSubmittingReview(false);
+                if (error) { alert('Failed to submit review. Please try again.'); return; }
+                setRatingBooking(null);
+                fetchBookings();
+              }}
+              className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-semibold flex items-center justify-center gap-2"
+            >
+              {isSubmittingReview && <Loader2 className="w-4 h-4 animate-spin" />}
+              Submit Review
+            </button>
+          </div>
+        </div>
+      )}
+
+      <InvoiceModal
+        booking={invoiceBooking}
+        isOpen={!!invoiceBooking}
+        onClose={() => setInvoiceBooking(null)}
+      />
     </div>
   );
 };

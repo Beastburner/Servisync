@@ -346,10 +346,26 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     paymentMethod: 'cash'
   });
 
+  // Load saved address on mount
+  useEffect(() => {
+    if (isOpen) {
+      const savedAddress = localStorage.getItem('servisync_saved_address');
+      const savedPhone = localStorage.getItem('servisync_saved_phone');
+      if (savedAddress || savedPhone) {
+        setBookingData(prev => ({
+          ...prev,
+          address: savedAddress || prev.address,
+          phone: savedPhone || prev.phone
+        }));
+      }
+    }
+  }, [isOpen]);
+
   // Determine step titles based on whether service selection is needed
   // This must be defined early so it can be used in hooks and functions
   // Show service selection if there are any services (even just one, so user can see what they're booking)
   const needsServiceSelection = providerServices.length > 0;
+  const maxStep = needsServiceSelection ? 4 : 3;
 
   // Initialize selectedService when modal opens or providerServices changes
   useEffect(() => {
@@ -632,7 +648,6 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   };
 
   const handleNextStep = async () => {
-    const maxStep = needsServiceSelection ? 4 : 3;
     if (currentStep < maxStep) {
       setCurrentStep(currentStep + 1);
     } else {
@@ -678,10 +693,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           ...createdBooking // Include all booking data from Firestore
         };
         setConfirmedBooking(confirmedBookingData);
-        setBookingStatus('pending');
+        // Save address to local storage
+        if (bookingData.address) localStorage.setItem('servisync_saved_address', bookingData.address);
+        if (bookingData.phone) localStorage.setItem('servisync_saved_phone', bookingData.phone);
         
         // Show success message
-        setCurrentStep(4);
+        setCurrentStep(maxStep + 1);
       } catch (error) {
         console.error('Error saving booking:', error);
         alert('Error saving booking. Please try again.');
@@ -1126,8 +1143,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto relative z-[10000]">
-        <div className="p-6">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] overflow-hidden relative z-[10000]">
+
+        {/* ── Fixed Header (never scrolls) ── */}
+        <div className="px-6 pt-6 pb-4 flex-shrink-0 border-b border-gray-100">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold text-gray-900">
               Book {provider?.name}
@@ -1141,7 +1160,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           </div>
 
           {/* Progress Steps */}
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center justify-between mb-4">
             {stepTitles.map((title, index) => (
               <div key={index} className="flex items-center">
                 <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
@@ -1153,15 +1172,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 }`}>
                   {currentStep > index + 1 ? '✓' : index + 1}
                 </div>
-                <div className="ml-3">
-                  <p className={`text-sm font-medium ${
+                <div className="ml-2">
+                  <p className={`text-xs font-medium ${
                     currentStep >= index + 1 ? 'text-blue-600' : 'text-gray-500'
                   }`}>
                     {title}
                   </p>
                 </div>
                 {index < stepTitles.length - 1 && (
-                  <div className={`w-16 h-0.5 mx-4 ${
+                  <div className={`w-8 h-0.5 mx-2 ${
                     currentStep > index + 1 ? 'bg-green-600' : 'bg-gray-200'
                   }`} />
                 )}
@@ -1170,17 +1189,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           </div>
 
           {/* Provider Info */}
-          <div className="bg-blue-50 rounded-lg p-4 mb-6">
+          <div className="bg-blue-50 rounded-lg p-3">
             <div className="flex items-center space-x-3">
               <img
                 src={provider?.image}
                 alt={provider?.name}
-                className="w-12 h-12 rounded-full object-cover"
+                className="w-10 h-10 rounded-full object-cover"
               />
               <div>
                 <h3 className="font-semibold text-gray-900">{provider?.name}</h3>
                 <p className="text-sm text-gray-600">{service}</p>
-                <div className="flex items-center space-x-4 text-sm text-gray-500">
+                <div className="flex items-center space-x-3 text-sm text-gray-500">
                   <span>⭐ {provider?.rating}</span>
                   <span>📍 {provider?.distance}</span>
                   <span>⏱️ {provider?.eta}</span>
@@ -1188,41 +1207,41 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Step Content */}
-          <div className="mb-6">
-            {renderStep()}
-          </div>
+        {/* ── Scrollable Step Content ── */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {renderStep()}
+        </div>
 
-          {/* Navigation Buttons */}
-          <div className="flex justify-between">
-            {currentStep > 1 && currentStep < 4 && (
-              <button
-                onClick={() => setCurrentStep(currentStep - 1)}
-                className="px-6 py-2 text-gray-600 hover:text-gray-800 transition-colors"
-              >
-                Previous
-              </button>
-            )}
-            {currentStep < 4 && <button
-              onClick={handleNextStep}
-              disabled={!canProceed() || isSavingBooking}
-              className={`px-6 py-3 rounded-lg font-semibold ml-auto flex items-center space-x-2 ${
-                canProceed() && !isSavingBooking
-                  ? 'bg-blue-600 text-white hover:bg-blue-700'
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              }`}
+        {/* ── Sticky Footer Buttons ── */}
+        <div className="flex justify-between px-6 py-4 border-t border-gray-100 flex-shrink-0 bg-white rounded-b-xl">
+          {currentStep > 1 && currentStep <= maxStep && (
+            <button
+              onClick={() => setCurrentStep(currentStep - 1)}
+              className="px-6 py-2 text-gray-600 hover:text-gray-800 transition-colors"
             >
-              {isSavingBooking ? (
-                <>
-                  <Loader className="h-4 w-4 animate-spin" />
-                  <span>Saving Request...</span>
-                </>
-              ) : (
-                <span>{currentStep === 3 ? 'Send Booking Request' : 'Next'}</span>
-              )}
-            </button>}
-          </div>
+              Previous
+            </button>
+          )}
+          {currentStep <= maxStep && <button
+            onClick={handleNextStep}
+            disabled={!canProceed() || isSavingBooking}
+            className={`px-6 py-3 rounded-lg font-semibold ml-auto flex items-center space-x-2 ${
+              canProceed() && !isSavingBooking
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            }`}
+          >
+            {isSavingBooking ? (
+              <>
+                <Loader className="h-4 w-4 animate-spin" />
+                <span>Saving Request...</span>
+              </>
+            ) : (
+              <span>{currentStep === maxStep ? 'Send Booking Request' : 'Next'}</span>
+            )}
+          </button>}
         </div>
       </div>
 

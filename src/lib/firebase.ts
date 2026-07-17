@@ -1,6 +1,7 @@
 import { initializeApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
+import { getFunctions, Functions } from 'firebase/functions';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -51,11 +52,13 @@ if (!firebaseConfig.authDomain.includes('.firebaseapp.com') && !firebaseConfig.a
 let app: FirebaseApp;
 let auth: Auth;
 let db: Firestore;
+let functions: Functions;
 
 try {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
+  functions = getFunctions(app);
   
   console.log('✅ Firebase initialized successfully');
 } catch (error: any) {
@@ -66,5 +69,5 @@ try {
   );
 }
 
-export { auth, db };
+export { auth, db, functions };
 

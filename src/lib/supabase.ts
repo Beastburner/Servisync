@@ -127,6 +127,8 @@ export const signUp = async (email: string, password: string, userData: any) => 
           business_name: userData.businessName,
           service_type: userData.serviceType,
           phone: userData.phone,
+          ...(userData.latitude ? { latitude: userData.latitude } : {}),
+          ...(userData.longitude ? { longitude: userData.longitude } : {}),
         });
       }
     }
@@ -1029,6 +1031,88 @@ export const rejectBooking = async (bookingId: string, reason?: string) => {
     return { data, error: null };
   } catch (error) {
     console.error('Error rejecting booking:', error);
+    return { data: null, error };
+  }
+};
+
+// Cancel a booking (customer-side)
+export const cancelBooking = async (bookingId: string, reason: string) => {
+  try {
+    const docRef = doc(db, 'bookings', bookingId);
+    const bookingDoc = await getDoc(docRef);
+
+    if (!bookingDoc.exists()) {
+      return { data: null, error: new Error('Booking not found') };
+    }
+
+    const bookingData = bookingDoc.data();
+    const cancellableStatuses = ['pending', 'accepted', 'scheduled'];
+    if (!cancellableStatuses.includes(bookingData.status)) {
+      return { data: null, error: new Error(`Cannot cancel a booking with status: ${bookingData.status}`) };
+    }
+
+    await updateDoc(docRef, {
+      status: 'cancelled',
+      cancellation_reason: reason,
+      cancelled_by: 'customer',
+      cancelled_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+    });
+
+    const docSnap = await getDoc(docRef);
+    const data = convertDocumentData({ id: docSnap.id, ...docSnap.data() });
+    return { data, error: null };
+  } catch (error) {
+    console.error('Error cancelling booking:', error);
+    return { data: null, error };
+  }
+};
+
+// Submit a review for a completed booking
+export const submitReview = async (reviewData: {
+  bookingId: string;
+  userId: string;
+  providerId: string;
+  rating: number;        // 1–5
+  comment: string;
+  serviceType: string;
+}) => {
+  try {
+    // 1. Save review document
+    const reviewsRef = collection(db, 'reviews');
+    const reviewDoc = doc(reviewsRef);
+    await setDoc(reviewDoc, {
+      ...reviewData,
+      created_at: serverTimestamp(),
+    });
+
+    // 2. Update booking with review info
+    const bookingRef = doc(db, 'bookings', reviewData.bookingId);
+    await updateDoc(bookingRef, {
+      review_submitted: true,
+      review_rating: reviewData.rating,
+      review_comment: reviewData.comment,
+      updated_at: serverTimestamp(),
+    });
+
+    // 3. Recalculate provider's average rating
+    const providerRef = doc(db, 'service_providers', reviewData.providerId);
+    const providerSnap = await getDoc(providerRef);
+    if (providerSnap.exists()) {
+      const providerData = providerSnap.data();
+      const oldTotal = (providerData.rating || 0) * (providerData.total_reviews || 0);
+      const newTotalReviews = (providerData.total_reviews || 0) + 1;
+      const newRating = (oldTotal + reviewData.rating) / newTotalReviews;
+      await updateDoc(providerRef, {
+        rating: Math.round(newRating * 10) / 10,
+        total_reviews: newTotalReviews,
+        updated_at: serverTimestamp(),
+      });
+    }
+
+    return { data: { id: reviewDoc.id }, error: null };
+  } catch (error) {
+    console.error('Error submitting review:', error);
     return { data: null, error };
   }
 };

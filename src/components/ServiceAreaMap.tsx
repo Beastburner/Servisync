@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { Icon } from 'leaflet';
-import { MapPin, Star, Phone, Navigation, Clock } from 'lucide-react';
+import { MapPin, Star, Phone, Navigation, Clock, SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { BookingModal } from './BookingModal';
+import { ProviderProfileModal } from './ProviderProfileModal';
 import { getNearbyServiceProviders, createBooking, subscribeToProviderLocation } from '../lib/supabase';
 import 'leaflet/dist/leaflet.css';
 
@@ -78,6 +79,10 @@ export const ServiceAreaMap: React.FC<ServiceAreaMapProps> = ({ location, select
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [bookingProvider, setBookingProvider] = useState<ServiceProvider | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // Filter & sort state
+  const [sortBy, setSortBy] = useState<'distance' | 'rating' | 'price'>('distance');
+  const [onlyTopRated, setOnlyTopRated] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
   // Fetch real service providers from Firestore
   useEffect(() => {
@@ -184,6 +189,25 @@ export const ServiceAreaMap: React.FC<ServiceAreaMapProps> = ({ location, select
 
     fetchProviders();
   }, [location.lat, location.lng, selectedService]);
+
+  // Filtered + sorted provider list
+  const displayedProviders = useMemo(() => {
+    let list = [...providers];
+    if (onlyTopRated) list = list.filter(p => p.rating >= 4);
+    list.sort((a, b) => {
+      if (sortBy === 'rating') return b.rating - a.rating;
+      if (sortBy === 'price') {
+        const aPrice = parseFloat(a.price.replace(/[^0-9.]/g, '')) || 0;
+        const bPrice = parseFloat(b.price.replace(/[^0-9.]/g, '')) || 0;
+        return aPrice - bPrice;
+      }
+      // distance (default) — already sorted by API
+      const aDist = parseFloat(a.distance) || 0;
+      const bDist = parseFloat(b.distance) || 0;
+      return aDist - bDist;
+    });
+    return list;
+  }, [providers, sortBy, onlyTopRated]);
 
   // Subscribe to real-time location updates for all visible providers
   useEffect(() => {
@@ -497,13 +521,83 @@ export const ServiceAreaMap: React.FC<ServiceAreaMapProps> = ({ location, select
         </div>
 
         {/* Provider List */}
-        <div className="p-6 bg-gray-50 lg:h-[500px] overflow-y-auto">
-          <h3 className="text-lg font-semibold mb-4 text-gray-900">
-            Available Providers
-            <span className="text-sm font-normal text-gray-500 ml-2">
-              ({isLoading ? '...' : providers.length} found)
-            </span>
-          </h3>
+        <div className="p-4 bg-gray-50 lg:h-[500px] overflow-y-auto">
+          {/* Header + filter toggle */}
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-base font-semibold text-gray-900">
+              Available Providers
+              <span className="text-sm font-normal text-gray-500 ml-2">
+                ({isLoading ? '...' : displayedProviders.length} found)
+              </span>
+            </h3>
+            <button
+              onClick={() => setShowFilters(f => !f)}
+              className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+              Filters
+              <ChevronDown className={`w-3 h-3 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+            </button>
+          </div>
+
+          {/* Filter/sort panel */}
+          {showFilters && (
+            <div className="bg-white border border-gray-200 rounded-lg p-3 mb-3 space-y-3">
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Sort by</p>
+                <div className="flex gap-2">
+                  {(['distance','rating','price'] as const).map(s => (
+                    <button
+                      key={s}
+                      onClick={() => setSortBy(s)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                        sortBy === s
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+                      }`}
+                    >
+                      {s.charAt(0).toUpperCase() + s.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={onlyTopRated}
+                    onChange={e => setOnlyTopRated(e.target.checked)}
+                    className="accent-blue-600"
+                  />
+                  <span className="text-xs text-gray-700">Top rated only (★ 4.0+)</span>
+                </label>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <p className="text-xs font-medium text-gray-500">Max Price (₹)</p>
+                  <p className="text-xs font-bold text-gray-700">{maxPrice === null ? 'Any' : `₹${maxPrice}`}</p>
+                </div>
+                <input
+                  type="range"
+                  min="100"
+                  max="5000"
+                  step="100"
+                  value={maxPrice || 5000}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    if (val >= 5000) setMaxPrice(null);
+                    else setMaxPrice(val);
+                  }}
+                  className="w-full accent-blue-600 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                />
+                <div className="flex justify-between mt-1 px-1">
+                  <span className="text-[10px] text-gray-400">₹100</span>
+                  <span className="text-[10px] text-gray-400">Any</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {isLoading ? (
             <div className="text-center py-8">
@@ -512,7 +606,7 @@ export const ServiceAreaMap: React.FC<ServiceAreaMapProps> = ({ location, select
             </div>
           ) : (
             <div className="space-y-4">
-            {providers.map((provider) => (
+            {displayedProviders.map((provider) => (
               <div
                 key={provider.id}
                 onClick={() => handleProviderSelect(provider)}
@@ -595,57 +689,28 @@ export const ServiceAreaMap: React.FC<ServiceAreaMapProps> = ({ location, select
             </div>
           )}
 
-          {!isLoading && providers.length === 0 && (
+          {!isLoading && displayedProviders.length === 0 && (
             <div className="text-center py-8">
               <MapPin className="h-12 w-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500">No providers found within 10km</p>
-              <p className="text-sm text-gray-400">Try selecting a different service</p>
+              <p className="text-sm text-gray-400">Try selecting a different service or removing filters</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Selected Provider Details */}
-      {selectedProvider && (
-        <div className="p-6 border-t bg-white">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <img
-                src={selectedProvider.image}
-                alt={selectedProvider.name}
-                className="w-16 h-16 rounded-full object-cover"
-              />
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">{selectedProvider.name}</h3>
-                <p className="text-gray-600">{selectedProvider.service}</p>
-                <div className="flex items-center space-x-4 mt-1">
-                  <div className="flex items-center space-x-1">
-                    <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                    <span className="text-sm text-gray-600">{selectedProvider.rating}</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <Clock className="h-4 w-4 text-gray-400" />
-                    <span className="text-sm text-gray-600">{selectedProvider.eta}</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <Navigation className="h-4 w-4 text-gray-400" />
-                    <span className="text-sm text-gray-600">{selectedProvider.distance}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="text-2xl font-bold text-green-600">{selectedProvider.price}</p>
-              <button
-                onClick={() => handleBookProvider(selectedProvider)}
-                className="mt-2 bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-              >
-                Book {selectedProvider.name}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Selected Provider Full Profile Modal */}
+      <ProviderProfileModal
+        provider={selectedProvider}
+        isOpen={!!selectedProvider}
+        onClose={() => setSelectedProvider(null)}
+        onBook={() => {
+          if (selectedProvider) {
+            handleBookProvider(selectedProvider);
+            setSelectedProvider(null);
+          }
+        }}
+      />
 
       {/* Booking Modal */}
       <BookingModal

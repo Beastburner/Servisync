@@ -198,3 +198,7 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   return R * c; // Distance in kilometers
 }
 
+// Export Twilio Auth endpoints
+const twilioAuth = require('./twilioAuth');
+exports.requestTwilioOTP = twilioAuth.requestTwilioOTP;
+exports.verifyTwilioOTP = twilioAuth.verifyTwilioOTP;

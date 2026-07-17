@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
-import { X, Mail, Lock, User, Building, Phone } from 'lucide-react';
-import { signIn, signUp, signInWithGoogle } from '../lib/supabase';
+import React, { useState, useEffect } from 'react';
+import { X, Mail, Lock, User, Building, Phone, Smartphone, ArrowRight, ShieldCheck } from 'lucide-react';
+import { signIn, signUp, signInWithGoogle, getServiceProvider } from '../lib/supabase';
+import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
+import { auth, db } from '../lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -23,6 +26,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
   const [showGoogleProviderForm, setShowGoogleProviderForm] = useState(false);
   const [googleUser, setGoogleUser] = useState<any>(null);
 
+  // Phone Auth State
+  const [authMethod, setAuthMethod] = useState<'email' | 'phone'>('email');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [confirmationResult, setConfirmationResult] = useState<any>(null);
+
+  useEffect(() => {
+    // Initialize RecaptchaVerifier on mount
+    if (!window.recaptchaVerifier) {
+      try {
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+          size: 'invisible'
+        });
+      } catch (e) {
+        console.error("Recaptcha init error:", e);
+      }
+    }
+  }, []);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,13 +57,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
       if (isLogin) {
         result = await signIn(formData.email, formData.password);
       } else {
-        result = await signUp(formData.email, formData.password, {
+        let additionalData: any = {
           userType,
           fullName: formData.fullName,
-          businessName: formData.businessName,
-          serviceType: formData.serviceType,
           phone: formData.phone,
-        });
+        };
+
+        if (userType === 'provider') {
+          additionalData.businessName = formData.businessName;
+          additionalData.serviceType = formData.serviceType;
+          
+          // Try to get provider's location during signup
+          try {
+            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+              navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
+            });
+            additionalData.latitude = position.coords.latitude;
+            additionalData.longitude = position.coords.longitude;
+          } catch (geoError) {
+            console.warn("Could not get location during signup:", geoError);
+            // It's okay, they can update it later in dashboard
+          }
+        }
+
+        result = await signUp(formData.email, formData.password, additionalData);
       }
 
       if (result.error) {
@@ -72,6 +111,76 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
       ...prev,
       [e.target.name]: e.target.value
     }));
+  };
+
+  const handleSendOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.phone) return alert('Please enter a phone number');
+    
+    // Format phone (very basic, requires + and country code for Firebase)
+    let formattedPhone = formData.phone.trim();
+    if (!formattedPhone.startsWith('+')) {
+      formattedPhone = '+91' + formattedPhone; // Default to India if no code
+    }
+
+    setIsLoading(true);
+    try {
+      if (!window.recaptchaVerifier) {
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', { size: 'invisible' });
+      }
+      const confirmation = await signInWithPhoneNumber(auth, formattedPhone, window.recaptchaVerifier);
+      setConfirmationResult(confirmation);
+      setOtpSent(true);
+    } catch (error: any) {
+      console.error('Error sending OTP:', error);
+      alert(`Could not send OTP: ${error.message}\n\nPlease ensure Phone Auth is enabled in Firebase Console and this domain is authorized.`);
+      // Reset recaptcha if error
+      if (window.recaptchaVerifier) {
+        window.recaptchaVerifier.clear();
+        window.recaptchaVerifier = undefined;
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otpCode || !confirmationResult) return;
+    
+    // Format phone (very basic, requires + and country code for Firebase)
+    let formattedPhone = formData.phone.trim();
+    if (!formattedPhone.startsWith('+')) {
+      formattedPhone = '+91' + formattedPhone; // Default to India if no code
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await confirmationResult.confirm(otpCode);
+      const user = result.user;
+      
+      // Check if user exists in DB, if not create profile
+      const userDoc = await getDoc(doc(db, 'user_profiles', user.uid));
+      if (!userDoc.exists()) {
+        await setDoc(doc(db, 'user_profiles', user.uid), {
+          id: user.uid,
+          phone: formData.phone,
+          full_name: formData.fullName || 'User',
+          created_at: new Date().toISOString()
+        });
+      }
+      
+      onAuthSuccess();
+      onClose();
+      setOtpSent(false);
+      setOtpCode('');
+      setFormData(prev => ({ ...prev, phone: '' }));
+    } catch (error: any) {
+      console.error('Error verifying OTP:', error);
+      alert('Invalid OTP. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleGoogleSignIn = async () => {
@@ -210,6 +319,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
             </button>
           </div>
 
+          <div id="recaptcha-container"></div>
+
+          {/* Authentication Method Toggle */}
+          {isLogin && !otpSent && (
+            <div className="flex bg-gray-100 p-1 rounded-lg mb-6">
+              <button
+                onClick={() => setAuthMethod('email')}
+                className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${authMethod === 'email' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                <Mail className="w-4 h-4 inline-block mr-2 -mt-0.5" /> Email
+              </button>
+              <button
+                onClick={() => setAuthMethod('phone')}
+                className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${authMethod === 'phone' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                <Smartphone className="w-4 h-4 inline-block mr-2 -mt-0.5" /> Phone OTP
+              </button>
+            </div>
+          )}
+
           {!isLogin && (
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -314,57 +443,126 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
               </>
             )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email Address
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Enter your email"
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <input
-                  type="password"
-                  name="password"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Enter your password"
-                  required
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <div className="flex items-center justify-center">
-                  <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full mr-2"></div>
-                  {isLogin ? 'Signing In...' : 'Creating Account...'}
+            {(!isLogin || authMethod === 'email') && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email Address
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <input
+                      type="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Enter your email"
+                      required
+                    />
+                  </div>
                 </div>
-              ) : (
-                isLogin ? 'Sign In' : 'Create Account'
-              )}
-            </button>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <input
+                      type="password"
+                      name="password"
+                      value={formData.password}
+                      onChange={handleInputChange}
+                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Enter your password"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isLoading ? (
+                    <div className="flex items-center justify-center">
+                      <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full mr-2"></div>
+                      {isLogin ? 'Signing In...' : 'Creating Account...'}
+                    </div>
+                  ) : (
+                    isLogin ? 'Sign In' : 'Create Account'
+                  )}
+                </button>
+              </>
+            )}
           </form>
+
+          {isLogin && authMethod === 'phone' && (
+            <form onSubmit={otpSent ? handleVerifyOtp : handleSendOtp} className="space-y-4">
+              {!otpSent ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Phone Number
+                    </label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                      <input
+                        type="tel"
+                        name="phone"
+                        value={formData.phone}
+                        onChange={handleInputChange}
+                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="+91 98765 43210"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={isLoading || !formData.phone}
+                    className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isLoading ? 'Sending...' : 'Send OTP'}
+                    {!isLoading && <ArrowRight className="w-4 h-4" />}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Enter 6-digit OTP
+                    </label>
+                    <div className="relative">
+                      <ShieldCheck className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                      <input
+                        type="text"
+                        value={otpCode}
+                        onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 tracking-widest text-lg font-medium"
+                        placeholder="000000"
+                        maxLength={6}
+                        required
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Code sent to {formData.phone}.{' '}
+                      <button type="button" onClick={() => setOtpSent(false)} className="text-blue-600 font-medium">Change number</button>
+                    </p>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={isLoading || otpCode.length !== 6}
+                    className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                  >
+                    {isLoading ? 'Verifying...' : 'Verify & Login'}
+                  </button>
+                </>
+              )}
+            </form>
+          )}
 
           <div className="mt-6">
             <div className="relative">
@@ -408,7 +606,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
             <p className="text-sm text-gray-600">
               {isLogin ? "Don't have an account?" : "Already have an account?"}
               <button
-                onClick={() => setIsLogin(!isLogin)}
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setOtpSent(false);
+                  setAuthMethod('email');
+                }}
                 className="ml-1 text-blue-600 hover:text-blue-700 font-medium"
               >
                 {isLogin ? 'Sign Up' : 'Sign In'}
@@ -416,7 +618,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
             </p>
           </div>
 
-          {isLogin && (
+          {isLogin && authMethod === 'email' && (
             <div className="mt-4 text-center">
               <button className="text-sm text-blue-600 hover:text-blue-700">
                 Forgot your password?
