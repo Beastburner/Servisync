@@ -716,6 +716,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       };
 
       if (bookingData.paymentMethod === 'razorpay') {
+        alert('Starting Razorpay Secure Checkout...');
         const Razorpay = await loadRazorpay();
         if (!Razorpay) {
           alert('Razorpay SDK failed to load. Are you online?');

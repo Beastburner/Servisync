@@ -56,6 +56,7 @@ const BookingFlow: React.FC<BookingFlowProps> = ({ selectedService, onBookingCre
       };
 
       if (bookingData.paymentMethod === 'razorpay') {
+        alert('Starting Razorpay Secure Checkout...');
         const Razorpay = await loadRazorpay();
         if (!Razorpay) {
           alert('Razorpay SDK failed to load');
