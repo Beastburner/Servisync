@@ -11,10 +11,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
   const [providers, setProviders] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
+  const ADMIN_PASSWORD = 'admin'; // Simple hardcoded password for demo
 
   useEffect(() => {
-    fetchProviders();
-  }, []);
+    if (isAuthenticated) {
+      fetchProviders();
+    }
+  }, [isAuthenticated]);
 
   const fetchProviders = async () => {
     setIsLoading(true);
@@ -56,6 +63,61 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     p.phone?.includes(searchTerm) ||
     p.service_type?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password === ADMIN_PASSWORD) {
+      setIsAuthenticated(true);
+      setPasswordError('');
+    } else {
+      setPasswordError('Incorrect password');
+    }
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="fixed inset-0 bg-gray-900 bg-opacity-75 z-[1000] flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden relative">
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-full transition-colors"
+          >
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+          
+          <div className="p-8">
+            <div className="flex justify-center mb-6">
+              <div className="bg-blue-100 p-3 rounded-full">
+                <Shield className="w-8 h-8 text-blue-600" />
+              </div>
+            </div>
+            <h2 className="text-2xl font-bold text-center text-gray-900 mb-2">Admin Access Required</h2>
+            <p className="text-center text-gray-600 mb-6">Please enter the admin password to continue.</p>
+            
+            <form onSubmit={handlePasswordSubmit}>
+              <div className="mb-4">
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter password (hint: 'admin')"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  autoFocus
+                />
+                {passwordError && <p className="text-red-500 text-sm mt-2">{passwordError}</p>}
+              </div>
+              <button
+                type="submit"
+                className="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Access Dashboard
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-gray-50 z-[1000] overflow-y-auto">
