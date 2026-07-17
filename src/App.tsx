@@ -9,6 +9,7 @@ import ServiceManagementModal from './components/ServiceManagementModal';
 import { ProviderLocationTracker } from './components/ProviderLocationTracker';
 import { NotificationBell } from './components/NotificationBell';
 import { PricingModal } from './components/PricingModal';
+import { AdminDashboard } from './components/AdminDashboard';
 import { getCurrentUser, getUserProfile, getServiceProvider, signOut, updateServiceProvider, getProviderServices, addProviderService, updateProviderService, deleteProviderService, getAllAvailableServices } from './lib/supabase';
 import { 
   Search, 
@@ -58,6 +59,7 @@ function App() {
   const [availableServices, setAvailableServices] = useState<any[]>([]);
   const [availableServiceTypes, setAvailableServiceTypes] = useState<any[]>([]);
   const [isLoadingServices, setIsLoadingServices] = useState(false);
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   
   // API key not needed for Leaflet/OpenStreetMap
   const API_KEY = ''; // Keeping for compatibility
@@ -89,6 +91,14 @@ function App() {
       if (user && user.uid) {
         setUser(user);
         
+        // Hardcode admin email for demonstration
+        if (user.email === 'admin@servisync.com') {
+          console.log('Admin logged in');
+          setUserRole('admin');
+          setShowAdminDashboard(true);
+          return;
+        }
+
         // Check provider profile FIRST (providers should never be shown as customers)
         // This ensures providers always get the provider dashboard
         const { data: providerProfileData, error: providerError } = await getServiceProvider(user.uid);
@@ -622,14 +632,27 @@ function App() {
             <div className="hidden md:flex items-center space-x-4">
               {user ? (
                 <div className="flex items-center space-x-4">
-                  <div className="text-right">
-                    <div className="text-sm font-medium text-gray-900">
-                      {userProfile?.full_name || user.email}
-                    </div>
-                    <div className="text-xs text-gray-500">Customer</div>
-                  </div>
+                  <span className="text-sm font-medium text-gray-700 hidden sm:inline-block">
+                    {userRole === 'admin' ? 'Admin' : (userProfile?.full_name || user.email)}
+                  </span>
+                  
+                  {userRole === 'admin' && (
+                    <button
+                      onClick={() => setShowAdminDashboard(true)}
+                      className="text-gray-700 hover:text-blue-600 font-medium text-sm transition-colors"
+                    >
+                      Admin Dashboard
+                    </button>
+                  )}
+
                   {userRole === 'customer' && (
                     <div className="flex items-center space-x-4">
+                      <div className="text-right">
+                        <div className="text-sm font-medium text-gray-900">
+                          {userProfile?.full_name || user.email}
+                        </div>
+                        <div className="text-xs text-gray-500">Customer</div>
+                      </div>
                       <NotificationBell userId={user.uid} />
                       <button
                         onClick={() => setShowUserDashboard(true)}
@@ -1347,6 +1370,11 @@ function App() {
             setShowServiceArea(true);
           }}
         />
+      )}
+
+      {/* Admin Dashboard */}
+      {showAdminDashboard && user && userRole === 'admin' && (
+        <AdminDashboard onClose={() => setShowAdminDashboard(false)} />
       )}
 
       {/* Pricing Modal */}

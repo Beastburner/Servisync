@@ -1308,6 +1308,10 @@ export const getAllAvailableServices = async () => {
 
     querySnapshot.docs.forEach((doc) => {
       const providerData = doc.data();
+      
+      // Skip unverified providers
+      if (providerData.is_verified !== true) return;
+
       const services = providerData.services || [];
 
       services.forEach((service: any) => {
@@ -1397,8 +1401,15 @@ export const getNearbyServiceProviders = async (
         documentId: providerDoc.id,
         user_id: providerData.user_id,
         business_name: providerData.business_name,
+        is_verified: providerData.is_verified,
         note: 'Document ID should match user_id (Firebase Auth UID)'
       });
+      
+      // Skip unverified providers
+      if (providerData.is_verified !== true) {
+        console.log(`Skipping unverified provider ${providerData.business_name || providerDoc.id}`);
+        continue;
+      }
       
       // Check if provider has location data and location visibility is enabled
       // show_location defaults to true if not set (for backward compatibility)
