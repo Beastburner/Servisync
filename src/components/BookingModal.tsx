@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Clock, MapPin, Navigation, Loader, CheckCircle, XCircle } from 'lucide-react';
 import { LiveRouteTracker } from './LiveRouteTracker';
 import { subscribeToBooking } from '../lib/supabase';
+import { loadRazorpay } from '../lib/razorpay';
 
 // Time Picker Component
 interface TimePickerProps {
@@ -673,37 +674,85 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         createdAt: new Date().toISOString()
       };
       
-      try {
-        // Call onBookingConfirm which saves to Firestore and returns the created booking
-        const result: any = await onBookingConfirm(booking);
-        
-        // Get the booking ID from the result
-        // createBooking returns { data: { id, ... }, error }
-        const createdBooking = result?.data || result;
-        const createdBookingId = createdBooking?.id || booking.id;
-        
-        console.log('📝 Booking created with ID:', createdBookingId);
-        console.log('📝 Full booking result:', result);
-        
-        // Set confirmed booking with pending status
-        const confirmedBookingData = {
-          ...booking,
-          id: createdBookingId,
-          status: 'pending',
-          ...createdBooking // Include all booking data from Firestore
+      const finalizeBooking = async (paymentDetails?: any) => {
+        try {
+          // Add payment details if available
+          if (paymentDetails) {
+            (booking as any).payment_id = paymentDetails.razorpay_payment_id;
+            (booking as any).order_id = paymentDetails.razorpay_order_id;
+          }
+
+          // Call onBookingConfirm which saves to Firestore and returns the created booking
+          const result: any = await onBookingConfirm(booking);
+          
+          // Get the booking ID from the result
+          // createBooking returns { data: { id, ... }, error }
+          const createdBooking = result?.data || result;
+          const createdBookingId = createdBooking?.id || booking.id;
+          
+          console.log('📝 Booking created with ID:', createdBookingId);
+          console.log('📝 Full booking result:', result);
+          
+          // Set confirmed booking with pending status
+          const confirmedBookingData = {
+            ...booking,
+            id: createdBookingId,
+            status: 'pending',
+            ...createdBooking // Include all booking data from Firestore
+          };
+          setConfirmedBooking(confirmedBookingData);
+          // Save address to local storage
+          if (bookingData.address) localStorage.setItem('servisync_saved_address', bookingData.address);
+          if (bookingData.phone) localStorage.setItem('servisync_saved_phone', bookingData.phone);
+          
+          // Show success message
+          setCurrentStep(maxStep + 1);
+        } catch (error) {
+          console.error('Error saving booking:', error);
+          alert('Error saving booking. Please try again.');
+        } finally {
+          setIsSavingBooking(false);
+        }
+      };
+
+      if (bookingData.paymentMethod === 'razorpay') {
+        const Razorpay = await loadRazorpay();
+        if (!Razorpay) {
+          alert('Razorpay SDK failed to load. Are you online?');
+          setIsSavingBooking(false);
+          return;
+        }
+
+        const options = {
+          key: import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_TYsQyXoFsqvHqK', // Dummy test key fallback
+          amount: (serviceToUse.price * 100).toString(), // Razorpay expects amount in paise (multiply by 100)
+          currency: 'INR',
+          name: 'ServiSync',
+          description: `Payment for ${serviceToUse.name}`,
+          image: 'https://servisync.vercel.app/favicon.ico',
+          handler: function (response: any) {
+            console.log('Razorpay payment success:', response);
+            finalizeBooking(response);
+          },
+          prefill: {
+            name: 'Customer',
+            email: 'test@example.com',
+            contact: bookingData.phone || ''
+          },
+          theme: {
+            color: '#2563EB'
+          }
         };
-        setConfirmedBooking(confirmedBookingData);
-        // Save address to local storage
-        if (bookingData.address) localStorage.setItem('servisync_saved_address', bookingData.address);
-        if (bookingData.phone) localStorage.setItem('servisync_saved_phone', bookingData.phone);
-        
-        // Show success message
-        setCurrentStep(maxStep + 1);
-      } catch (error) {
-        console.error('Error saving booking:', error);
-        alert('Error saving booking. Please try again.');
-      } finally {
-        setIsSavingBooking(false);
+
+        const paymentObject = new Razorpay(options);
+        paymentObject.on('payment.failed', function (response: any) {
+          console.error('Payment failed:', response.error);
+          alert(`Payment failed: ${response.error.description}`);
+          setIsSavingBooking(false);
+        });
+        paymentObject.open();
+      } else {
+        finalizeBooking();
       }
     }
   };
@@ -909,9 +958,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               <div className="space-y-3">
                 {[
                   { id: 'cash', name: 'Cash on Delivery', desc: 'Pay after service completion' },
-                  { id: 'card', name: 'Credit/Debit Card', desc: 'Secure online payment' },
-                  { id: 'upi', name: 'UPI', desc: 'Pay via UPI apps' },
-                  { id: 'wallet', name: 'Digital Wallet', desc: 'Paytm, PhonePe, etc.' }
+                  { id: 'razorpay', name: 'Razorpay (Test)', desc: 'Pay securely online (UPI/Card/Wallet)' }
                 ].map((method) => (
                   <div
                     key={method.id}

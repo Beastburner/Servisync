@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Calendar, Clock, MapPin, CreditCard, ArrowLeft, Check } from 'lucide-react';
+import { Calendar, Clock, MapPin, CreditCard, ArrowLeft, Check, Wallet } from 'lucide-react';
+import { loadRazorpay } from '../lib/razorpay';
 
 interface BookingFlowProps {
   selectedService: any;
@@ -35,18 +36,60 @@ const BookingFlow: React.FC<BookingFlowProps> = ({ selectedService, onBookingCre
     setBookingData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleNextStep = () => {
-    if (currentStep < 4) {
+  const handleNextStep = async () => {
+    if (currentStep < 3) {
       setCurrentStep(currentStep + 1);
-    } else {
-      // Create booking
-      const booking = {
-        id: Date.now().toString(),
-        service: selectedService,
-        ...bookingData,
-        status: 'confirmed'
+    } else if (currentStep === 3) {
+      // Create booking function
+      const finalizeBooking = (paymentDetails?: any) => {
+        const booking = {
+          id: Date.now().toString(),
+          service: selectedService,
+          ...bookingData,
+          status: 'confirmed'
+        };
+        if (paymentDetails) {
+          (booking as any).payment_id = paymentDetails.razorpay_payment_id;
+          (booking as any).order_id = paymentDetails.razorpay_order_id;
+        }
+        onBookingCreate(booking);
       };
-      onBookingCreate(booking);
+
+      if (bookingData.paymentMethod === 'razorpay') {
+        const Razorpay = await loadRazorpay();
+        if (!Razorpay) {
+          alert('Razorpay SDK failed to load');
+          return;
+        }
+
+        const options = {
+          key: import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_TYsQyXoFsqvHqK',
+          amount: (parseInt(selectedService?.price?.replace(/[^0-9]/g, '') || '500') * 100).toString(), // Parse string price to number (e.g. "₹500" -> 500)
+          currency: 'INR',
+          name: 'ServiSync',
+          description: `Payment for ${selectedService?.name}`,
+          handler: function (response: any) {
+            finalizeBooking(response);
+          },
+          prefill: {
+            name: 'Customer',
+            email: 'test@example.com',
+            contact: bookingData.phone
+          },
+          theme: { color: '#2563EB' }
+        };
+
+        const paymentObject = new Razorpay(options);
+        paymentObject.on('payment.failed', function (response: any) {
+          alert(`Payment failed: ${response.error.description}`);
+        });
+        paymentObject.open();
+      } else {
+        finalizeBooking();
+      }
+    } else {
+      // Step 4 is confirmation page, handled externally or just next
+      setCurrentStep(currentStep + 1);
     }
   };
 
@@ -154,10 +197,8 @@ const BookingFlow: React.FC<BookingFlowProps> = ({ selectedService, onBookingCre
               </label>
               <div className="space-y-3">
                 {[
-                  { id: 'cash', name: 'Cash on Delivery', desc: 'Pay after service completion' },
-                  { id: 'card', name: 'Credit/Debit Card', desc: 'Secure online payment' },
-                  { id: 'upi', name: 'UPI', desc: 'Pay via UPI apps' },
-                  { id: 'wallet', name: 'Digital Wallet', desc: 'Paytm, PhonePe, etc.' }
+                  { id: 'cash', name: 'Cash on Delivery', desc: 'Pay after service completion', icon: Wallet },
+                  { id: 'razorpay', name: 'Razorpay (Test)', desc: 'Pay securely online (UPI/Card/Wallet)', icon: CreditCard }
                 ].map((method) => (
                   <div
                     key={method.id}
@@ -168,19 +209,22 @@ const BookingFlow: React.FC<BookingFlowProps> = ({ selectedService, onBookingCre
                         : 'border-gray-300 hover:border-gray-400'
                     }`}
                   >
-                    <div className="flex items-center space-x-3">
-                      <div className={`w-4 h-4 rounded-full border-2 ${
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <method.icon className={`w-6 h-6 ${bookingData.paymentMethod === method.id ? 'text-blue-600' : 'text-gray-400'}`} />
+                        <div>
+                          <p className={`font-semibold ${bookingData.paymentMethod === method.id ? 'text-blue-900' : 'text-gray-900'}`}>{method.name}</p>
+                          <p className="text-sm text-gray-500">{method.desc}</p>
+                        </div>
+                      </div>
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
                         bookingData.paymentMethod === method.id
                           ? 'border-blue-500 bg-blue-500'
                           : 'border-gray-300'
                       }`}>
                         {bookingData.paymentMethod === method.id && (
-                          <div className="w-full h-full rounded-full bg-white scale-50"></div>
+                          <div className="w-2.5 h-2.5 rounded-full bg-white"></div>
                         )}
-                      </div>
-                      <div>
-                        <p className="font-medium">{method.name}</p>
-                        <p className="text-sm text-gray-600">{method.desc}</p>
                       </div>
                     </div>
                   </div>
