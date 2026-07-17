@@ -733,8 +733,10 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
         </div>
       </div>
 
-      {/* Map (Full Screen) */}
-      <div className="flex-1 relative">
+      {/* Map and Overlay Container */}
+      <div className="flex-1 relative overflow-hidden">
+        {/* Map */}
+        <div className="absolute inset-0 z-0">
         {userLocation && (
           <MapContainer 
             center={mapCenter as [number, number]} 
@@ -827,10 +829,10 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
             )}
           </MapContainer>
         )}
-      </div>
+        </div>
 
-      {/* Bottom Info Panel - Bottom Sheet Style */}
-      <div className="bg-white shadow-[0_-8px_30px_rgba(0,0,0,0.12)] rounded-t-3xl p-5 md:p-6 relative z-[1000]">
+        {/* Bottom Info Panel - Bottom Sheet Style */}
+        <div className="absolute bottom-0 left-0 right-0 bg-white shadow-[0_-10px_40px_rgba(0,0,0,0.15)] rounded-t-3xl p-5 md:p-6 z-[1000]">
         {/* Drag handle indicator */}
         <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-5"></div>
         
@@ -1109,6 +1111,7 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
               Last updated: {lastUpdateTime.toLocaleTimeString()}
             </div>
           )}
+        </div>
         </div>
       </div>
     </div>
