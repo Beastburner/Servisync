@@ -829,69 +829,76 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
         )}
       </div>
 
-      {/* Bottom Info Panel */}
-      <div className="bg-white border-t shadow-lg p-4">
+      {/* Bottom Info Panel - Bottom Sheet Style */}
+      <div className="bg-white shadow-[0_-8px_30px_rgba(0,0,0,0.12)] rounded-t-3xl p-5 md:p-6 relative z-[1000]">
+        {/* Drag handle indicator */}
+        <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-5"></div>
+        
         {/* Route Info */}
-        <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4 mb-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-gray-900">Route Information</h3>
-            <span className="text-sm text-green-600 font-medium bg-green-100 px-3 py-1 rounded-full">
-              {routeInfo.traffic}
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white rounded-lg p-3 shadow-sm">
-              <div className="flex items-center space-x-2 mb-1">
-                <Navigation className="h-5 w-5 text-blue-600" />
-                <span className="text-xs text-gray-600 uppercase tracking-wide">Distance</span>
-              </div>
-              <span className="text-xl font-bold text-gray-900">{routeInfo.distance}</span>
+        <div className="flex items-center justify-between mb-5 px-1">
+          <h3 className="font-bold text-gray-900 text-lg">Route Details</h3>
+          <span className="text-xs text-green-700 font-bold bg-green-100 px-3 py-1.5 rounded-full uppercase tracking-wider">
+            {routeInfo.traffic}
+          </span>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 flex items-center space-x-4">
+            <div className="bg-blue-100 p-2.5 rounded-xl">
+              <Navigation className="h-6 w-6 text-blue-600" />
             </div>
-            <div className="bg-white rounded-lg p-3 shadow-sm">
-              <div className="flex items-center space-x-2 mb-1">
-                <Clock className="h-5 w-5 text-green-600" />
-                <span className="text-xs text-gray-600 uppercase tracking-wide">Estimated Time</span>
-              </div>
-              <span className="text-xl font-bold text-gray-900">{routeInfo.duration}</span>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Distance</p>
+              <p className="text-lg font-bold text-gray-900">{routeInfo.distance}</p>
+            </div>
+          </div>
+          
+          <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 flex items-center space-x-4">
+            <div className="bg-green-100 p-2.5 rounded-xl">
+              <Clock className="h-6 w-6 text-green-600" />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Est. Time</p>
+              <p className="text-lg font-bold text-gray-900">{routeInfo.duration}</p>
             </div>
           </div>
         </div>
 
         {/* Provider Info */}
-        <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 mb-2">
           <div className="flex items-center space-x-4">
-            <img
-              src={booking.provider?.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1'}
-              alt={booking.provider?.name || 'Provider'}
-              className="w-16 h-16 rounded-full object-cover border-2 border-blue-500"
-            />
+            <div className="relative">
+              <img
+                src={booking.provider?.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1'}
+                alt={booking.provider?.name || 'Provider'}
+                className="w-16 h-16 rounded-full object-cover border-2 border-blue-500 shadow-sm"
+              />
+              <div className="absolute -bottom-1 -right-1 bg-green-500 w-4 h-4 rounded-full border-2 border-white"></div>
+            </div>
+            
             <div className="flex-1">
-              <h3 className="font-semibold text-gray-900 text-lg">{booking.provider?.name || 'Provider'}</h3>
-              <p className="text-gray-600">{booking.service || booking.service_type || 'Service'}</p>
-              <div className="flex items-center space-x-4 mt-2">
+              <h3 className="font-bold text-gray-900 text-lg leading-tight">{booking.provider?.name || 'Provider'}</h3>
+              <p className="text-sm text-gray-500 font-medium mb-1">{booking.service || booking.service_type || 'Service Professional'}</p>
+              
+              <div className="flex items-center space-x-3 mt-1.5">
                 {bookingStatus === 'arrived' ? (
-                  <div className="flex items-center space-x-1">
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                    <span className="text-sm text-green-600 font-medium">Provider has arrived!</span>
+                  <div className="flex items-center space-x-1.5">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                    <span className="text-sm text-green-700 font-bold">Has arrived</span>
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center space-x-1">
-                      <Car className="h-4 w-4 text-blue-500" />
-                      <span className="text-sm text-gray-700 font-medium">On the way</span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      <Clock className="h-4 w-4 text-green-500" />
-                      <span className="text-sm text-gray-700 font-medium">
-                        Arriving in {routeInfo.duration}
-                      </span>
+                    <div className="flex items-center space-x-1.5">
+                      <Car className="h-4 w-4 text-blue-600" />
+                      <span className="text-sm text-gray-700 font-semibold">On the way</span>
                     </div>
                   </>
                 )}
               </div>
             </div>
+            
             <button 
-              className="bg-green-600 text-white p-3 rounded-full hover:bg-green-700 transition-colors shadow-md"
+              className="bg-green-500 text-white p-3.5 rounded-full hover:bg-green-600 transition-all shadow-lg shadow-green-200 flex-shrink-0"
               onClick={() => {
                 const phone = booking.provider?.phone || booking.customer_phone;
                 if (phone) {
@@ -899,7 +906,7 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
                 }
               }}
             >
-              <Phone className="h-5 w-5" />
+              <Phone className="h-5 w-5 fill-current" />
             </button>
           </div>
         </div>
