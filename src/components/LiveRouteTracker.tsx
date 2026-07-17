@@ -67,22 +67,15 @@ const RoutingMachine: React.FC<{
         user: [userLocation[0], userLocation[1]]
       });
 
-      // Try multiple routing services in order of preference
-      // 1. OpenRouteService (free tier, good CORS support)
-      // 2. OSRM with CORS proxy
-      // 3. Direct OSRM (may timeout)
-      
+      // Use OSRM public demo server which natively supports CORS
       const coordinates = `${userLocation[1]},${userLocation[0]};${providerLocation[1]},${providerLocation[0]}`;
-      
-      // Try OpenRouteService first (free, no API key needed for basic usage)
-      let url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=5b3ce3597851110001cf6248e8b0e3c8b8c84c4da8c64b3c9b8c84c4d&coordinates=${coordinates}&geometry=true&geometry_format=geojson`;
+      const url = `https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson&alternatives=false`;
       
       try {
-        // Create an AbortController for timeout
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
 
-        let response = await fetch(url, {
+        const response = await fetch(url, {
           method: 'GET',
           headers: {
             'Accept': 'application/json',
@@ -92,77 +85,12 @@ const RoutingMachine: React.FC<{
 
         clearTimeout(timeoutId);
         
-        // If OpenRouteService fails, try OSRM with CORS proxy
-        if (!response.ok) {
-          console.log('⚠️ OpenRouteService failed, trying OSRM...');
-          const osrmCoordinates = `${userLocation[1]},${userLocation[0]};${providerLocation[1]},${providerLocation[0]}`;
-          // Use a CORS proxy for OSRM
-          url = `https://cors-anywhere.herokuapp.com/https://router.project-osrm.org/route/v1/driving/${osrmCoordinates}?overview=full&geometries=geojson&alternatives=false`;
-          
-          const osrmController = new AbortController();
-          const osrmTimeoutId = setTimeout(() => osrmController.abort(), 8000);
-          
-          response = await fetch(url, {
-            method: 'GET',
-            headers: {
-              'Accept': 'application/json',
-            },
-            signal: osrmController.signal,
-          });
-          
-          clearTimeout(osrmTimeoutId);
-        }
-
         if (!response.ok) {
           throw new Error(`OSRM API error: ${response.status} ${response.statusText}`);
         }
 
         const data = await response.json();
-
-        // Handle OpenRouteService response format
-        if (data.routes && data.routes.length > 0) {
-          const route = data.routes[0];
-          routeRetryRef.current = 0; // Reset retry counter on success
-
-          // Extract coordinates from GeoJSON geometry
-          // OpenRouteService returns coordinates as [lng, lat] pairs in GeoJSON format
-          const geometry = route.geometry;
-          let routeCoords: [number, number][] = [];
-
-          if (geometry && geometry.coordinates && Array.isArray(geometry.coordinates)) {
-            routeCoords = geometry.coordinates.map((coord: [number, number]) => {
-              // Convert from [lng, lat] to [lat, lng] for Leaflet
-              return [coord[1], coord[0]] as [number, number];
-            });
-
-            if (routeCoords.length > 0) {
-              setRouteCoordinates(routeCoords);
-              console.log('✅ Route coordinates extracted from OpenRouteService:', routeCoords.length, 'points');
-              console.log('📍 First point:', routeCoords[0], 'Last point:', routeCoords[routeCoords.length - 1]);
-            }
-          }
-
-          // Extract distance and duration (OpenRouteService format)
-          const distanceMeters = route.summary?.distance || route.distance || 0;
-          const durationSeconds = route.summary?.duration || route.duration || 0;
-          const distanceKm = (distanceMeters / 1000).toFixed(1);
-          const durationMin = Math.round(durationSeconds / 60);
-
-          setRouteInfo({
-            distance: `${distanceKm} km`,
-            duration: `${durationMin} mins`,
-            traffic: durationMin < 5 ? 'Very close' : durationMin < 15 ? 'Light traffic' : 'Moderate traffic',
-          });
-
-          // Check for arrival
-          const distanceValue = parseFloat(distanceKm);
-          if (distanceValue <= 0.01 && bookingId && onArrival) {
-            console.log('🚨 Provider arrived at doorstep!');
-            onArrival();
-          }
-        } 
-        // Handle OSRM response format (fallback)
-        else if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+        if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
           const route = data.routes[0];
           routeRetryRef.current = 0;
 
