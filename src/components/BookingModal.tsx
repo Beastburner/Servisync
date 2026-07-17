@@ -725,7 +725,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
         const options = {
           key: import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_TYsQyXoFsqvHqK', // Dummy test key fallback
-          amount: (serviceToUse.price * 100).toString(), // Razorpay expects amount in paise (multiply by 100)
+          amount: (parseInt(String(serviceToUse.price).replace(/[^0-9]/g, ''), 10) * 100 || 50000).toString(), // Razorpay expects amount in paise (multiply by 100)
           currency: 'INR',
           name: 'ServiSync',
           description: `Payment for ${serviceToUse.name}`,

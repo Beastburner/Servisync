@@ -64,7 +64,7 @@ const BookingFlow: React.FC<BookingFlowProps> = ({ selectedService, onBookingCre
 
         const options = {
           key: import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_TYsQyXoFsqvHqK',
-          amount: (parseInt(selectedService?.price?.replace(/[^0-9]/g, '') || '500') * 100).toString(), // Parse string price to number (e.g. "₹500" -> 500)
+          amount: (parseInt(String(selectedService?.price || '500').replace(/[^0-9]/g, ''), 10) * 100 || 50000).toString(),
           currency: 'INR',
           name: 'ServiSync',
           description: `Payment for ${selectedService?.name}`,
