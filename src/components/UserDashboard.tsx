@@ -138,17 +138,17 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userId, onClose, onRebook
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto relative z-[10000]">
         <div className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <button onClick={onClose} className="flex items-center text-blue-600 hover:text-blue-700">
+          <div className="flex items-center justify-between mb-6 gap-4">
+            <button onClick={onClose} className="flex items-center text-blue-600 hover:text-blue-700 flex-shrink-0">
               <ArrowLeft className="h-5 w-5 mr-2" />
               Back
             </button>
-            <h2 className="text-2xl font-bold">My Bookings</h2>
-            <div></div>
+            <h2 className="text-xl md:text-2xl font-bold truncate">My Bookings</h2>
+            <div className="w-16 sm:w-20"></div> {/* Spacer for centering */}
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex bg-gray-100 rounded-lg p-1">
+          <div className="flex flex-col lg:flex-row gap-4 mb-4">
+            <div className="flex bg-gray-100 rounded-lg p-1 overflow-x-auto whitespace-nowrap hide-scrollbar">
               <button
                 onClick={() => setActiveTab('all')}
                 className={`px-4 py-2 rounded-md font-medium transition-colors ${

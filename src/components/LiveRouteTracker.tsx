@@ -220,6 +220,7 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
   const [otpInput, setOtpInput] = useState('');
   const [isVerifyingOTP, setIsVerifyingOTP] = useState(false);
   const [showOTPInput, setShowOTPInput] = useState(false);
+  const [isPanelExpanded, setIsPanelExpanded] = useState(true);
 
   // Get booking ID - check multiple possible fields
   const bookingId = booking.id || booking.booking_id || null;
@@ -760,17 +761,30 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
         </div>
 
         {/* Bottom Info Panel - Bottom Sheet Style */}
-        <div className="absolute bottom-0 left-0 right-0 bg-white shadow-[0_-10px_40px_rgba(0,0,0,0.15)] rounded-t-3xl p-5 md:p-6 z-[1000]">
-        {/* Drag handle indicator */}
-        <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-5"></div>
-        
-        {/* Route Info */}
-        <div className="flex items-center justify-between mb-5 px-1">
-          <h3 className="font-bold text-gray-900 text-lg">Route Details</h3>
-          <span className="text-xs text-green-700 font-bold bg-green-100 px-3 py-1.5 rounded-full uppercase tracking-wider">
-            {routeInfo.traffic}
-          </span>
-        </div>
+        <div 
+          className={`absolute left-0 right-0 bg-white shadow-[0_-10px_40px_rgba(0,0,0,0.15)] rounded-t-3xl transition-all duration-300 ease-in-out z-[1000] flex flex-col ${
+            isPanelExpanded ? 'bottom-0 max-h-[80vh]' : '-bottom-[calc(100%-100px)] max-h-[80vh]'
+          }`}
+        >
+          {/* Header/Drag Handle Area - Always Visible */}
+          <div 
+            className="p-5 md:p-6 pb-2 cursor-pointer flex-shrink-0"
+            onClick={() => setIsPanelExpanded(!isPanelExpanded)}
+          >
+            {/* Drag handle indicator */}
+            <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-4 hover:bg-gray-400 transition-colors"></div>
+            
+            {/* Route Info Header */}
+            <div className="flex items-center justify-between px-1">
+              <h3 className="font-bold text-gray-900 text-lg">Route Details</h3>
+              <span className="text-xs text-green-700 font-bold bg-green-100 px-3 py-1.5 rounded-full uppercase tracking-wider">
+                {routeInfo.traffic}
+              </span>
+            </div>
+          </div>
+          
+          {/* Scrollable Content Area */}
+          <div className="overflow-y-auto px-5 md:px-6 pb-8 pt-2 overscroll-contain">
         
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 flex items-center space-x-4">
@@ -1039,6 +1053,8 @@ export const LiveRouteTracker: React.FC<LiveRouteTrackerProps> = ({
               Last updated: {lastUpdateTime.toLocaleTimeString()}
             </div>
           )}
+        </div>
+        
         </div>
         </div>
       </div>

@@ -1056,19 +1056,25 @@ const ProviderDashboard: React.FC<ProviderDashboardProps> = ({ userId, onClose, 
         <div className="p-6">
           <div className="bg-white rounded-lg shadow-lg">
             <div className="p-6 border-b">
-              <div className="flex items-center justify-between mb-6">
-                <button onClick={onClose} className="flex items-center text-blue-600 hover:text-blue-700">
-                  <ArrowLeft className="h-5 w-5 mr-2" />
-                  Back
-                </button>
-                <h2 className="text-2xl font-bold">Provider Dashboard</h2>
-                <div className="flex items-center space-x-2">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+                <div className="flex items-center justify-between w-full sm:w-auto">
+                  <button onClick={onClose} className="flex items-center text-blue-600 hover:text-blue-700 flex-shrink-0">
+                    <ArrowLeft className="h-5 w-5 mr-2" />
+                    Back
+                  </button>
+                  <div className="flex items-center space-x-2 sm:hidden flex-shrink-0">
+                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                    <span className="text-sm text-gray-600">Online</span>
+                  </div>
+                </div>
+                <h2 className="text-xl md:text-2xl font-bold truncate">Provider Dashboard</h2>
+                <div className="hidden sm:flex items-center space-x-2 flex-shrink-0">
                   <div className="w-3 h-3 bg-green-500 rounded-full"></div>
                   <span className="text-sm text-gray-600">Online</span>
                 </div>
               </div>
 
-              <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
+              <div className="flex space-x-1 bg-gray-100 rounded-lg p-1 overflow-x-auto whitespace-nowrap mb-4">
                 <button
                   onClick={() => setActiveTab('overview')}
                   className={`px-4 py-2 rounded-md font-medium transition-colors ${
