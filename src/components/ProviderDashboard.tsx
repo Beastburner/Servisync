@@ -363,16 +363,16 @@ const ProviderDashboard: React.FC<ProviderDashboardProps> = ({ userId, onClose, 
                 .slice(0, 3)
                 .map((job) => (
                   <div key={job.id} className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex justify-between items-start mb-2">
+                    <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-2 mb-2">
                       <div>
                         <h4 className="font-semibold capitalize">{job.service_type || job.service || 'Service'}</h4>
                         <p className="text-sm text-gray-600">{job.user_profiles?.full_name || job.customer || 'Customer'}</p>
                       </div>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(job.status || 'pending')}`}>
+                      <span className={`self-start sm:self-auto px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(job.status || 'pending')}`}>
                         {(job.status || 'pending').charAt(0).toUpperCase() + (job.status || 'pending').slice(1)}
                       </span>
                     </div>
-                    <div className="flex justify-between items-center text-sm text-gray-500">
+                    <div className="flex flex-col sm:flex-row justify-between sm:items-center text-sm text-gray-500 gap-1">
                       <span>{job.booking_date || job.date || 'Not set'} at {job.booking_time || job.time || 'Not set'}</span>
                       <span className="font-semibold text-gray-900">₹{job.total_amount || job.price || '0'}</span>
                     </div>
@@ -746,12 +746,12 @@ const ProviderDashboard: React.FC<ProviderDashboardProps> = ({ userId, onClose, 
             ) : (
               bookings.map((job) => (
                 <div key={job.id} className="border border-gray-200 rounded-lg p-6">
-                  <div className="flex justify-between items-start mb-4">
+                  <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-3 mb-4">
                     <div>
                       <h4 className="text-lg font-semibold capitalize">{job.service_type || job.service || 'Service'}</h4>
                       <p className="text-gray-600">{job.user_profiles?.full_name || job.customer || 'Customer'}</p>
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(job.status || 'pending')}`}>
+                    <span className={`self-start sm:self-auto px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(job.status || 'pending')}`}>
                       {(job.status || 'pending').charAt(0).toUpperCase() + (job.status || 'pending').slice(1)}
                     </span>
                   </div>
@@ -775,8 +775,8 @@ const ProviderDashboard: React.FC<ProviderDashboardProps> = ({ userId, onClose, 
                     </div>
                   </div>
 
-                <div className="flex justify-between items-center pt-4 border-t">
-                  <div className="flex space-x-3">
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 pt-4 border-t">
+                  <div className="flex flex-wrap gap-3 w-full lg:w-auto">
                     {(!job.status || job.status === 'pending') && (
                       <>
                         <button 

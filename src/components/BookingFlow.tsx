@@ -199,7 +199,8 @@ const BookingFlow: React.FC<BookingFlowProps> = ({ selectedService, onBookingCre
               <div className="space-y-3">
                 {[
                   { id: 'cash', name: 'Cash on Delivery', desc: 'Pay after service completion', icon: Wallet },
-                  { id: 'razorpay', name: 'Razorpay (Test)', desc: 'Pay securely online (UPI/Card/Wallet)', icon: CreditCard }
+                  { id: 'razorpay', name: 'Razorpay (Test)', desc: 'Pay securely online (UPI/Card/Wallet)', icon: CreditCard },
+                  { id: 'test', name: 'Test Payment', desc: 'Bypass payment for testing', icon: CreditCard }
                 ].map((method) => (
                   <div
                     key={method.id}

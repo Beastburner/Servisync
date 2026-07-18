@@ -233,14 +233,14 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userId, onClose, onRebook
               <div className="space-y-4">
                 {filteredBookings.map((booking) => (
                   <div key={booking.id} className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center space-x-4">
+                    <div className="flex flex-col sm:flex-row items-start justify-between gap-4 mb-4">
+                      <div className="flex items-center space-x-4 w-full sm:w-auto">
                         <img 
                           src={booking.service_providers?.image || 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1'}
                           alt={booking.service_providers?.business_name || 'Provider'}
-                          className="w-16 h-16 rounded-full object-cover"
+                          className="w-16 h-16 rounded-full object-cover flex-shrink-0"
                         />
-                        <div>
+                        <div className="flex-1">
                           <h3 className="text-lg font-semibold">{booking.service_type}</h3>
                           <p className="text-gray-600">{booking.service_providers?.business_name}</p>
                           <div className="flex items-center space-x-1 mt-1">
@@ -249,11 +249,11 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userId, onClose, onRebook
                           </div>
                         </div>
                       </div>
-                      <div className="text-right">
+                      <div className="flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto pt-4 sm:pt-0 border-t sm:border-t-0 mt-2 sm:mt-0">
                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(booking.status)}`}>
                           {booking.status.charAt(0).toUpperCase() + booking.status.slice(1).replace('-', ' ')}
                         </span>
-                        <p className="text-lg font-bold text-gray-900 mt-2">₹{booking.total_amount}</p>
+                        <p className="text-lg font-bold text-gray-900 sm:mt-2">₹{booking.total_amount}</p>
                       </div>
                     </div>
 
@@ -321,8 +321,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ userId, onClose, onRebook
                       </div>
                     )}
 
-                    <div className="flex justify-between items-center mt-4 pt-4 border-t">
-                      <div className="flex space-x-3">
+                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mt-4 pt-4 border-t">
+                      <div className="flex flex-wrap gap-2 w-full lg:w-auto">
                         {booking.status === 'pending' && (
                           <div className="text-sm text-orange-600">
                             ⏳ Waiting for provider to accept your request
